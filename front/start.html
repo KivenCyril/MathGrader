@@ -1,0 +1,1125 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Primary Math LLM Benchmark — UI Mock</title>
+  <style>
+    :root{
+      --bg:#0b1020;
+      --panel:#111a33;
+      --panel2:#0f1730;
+      --line:#22305a;
+      --text:#e7ecff;
+      --muted:#aab4e6;
+      --chip:#1a2550;
+      --ok:#2bd576;
+      --bad:#ff5a7a;
+      --warn:#ffcc66;
+      --btn:#2a3cff;
+      --btn2:#1c2aa8;
+      --shadow: 0 12px 30px rgba(0,0,0,.35);
+      --radius: 16px;
+      --radius2: 12px;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      --sans: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Noto Sans", Arial, "Apple Color Emoji", "Segoe UI Emoji";
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0;
+      font-family:var(--sans);
+      color:var(--text);
+      background:
+        radial-gradient(900px 500px at 20% -10%, rgba(42,60,255,.25), transparent 60%),
+        radial-gradient(700px 500px at 90% 10%, rgba(43,213,118,.14), transparent 55%),
+        radial-gradient(800px 600px at 30% 120%, rgba(255,90,122,.12), transparent 55%),
+        var(--bg);
+    }
+    a{color:inherit}
+    .app{max-width:1200px; margin:0 auto; padding:18px 18px 28px;}
+    .topbar{
+      display:flex; align-items:center; gap:14px; flex-wrap:wrap;
+      padding:14px 16px; border:1px solid var(--line);
+      background:linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02));
+      border-radius:var(--radius);
+      box-shadow:var(--shadow);
+      position:sticky; top:12px; z-index:20;
+      backdrop-filter: blur(10px);
+    }
+    .brand{display:flex; align-items:center; gap:10px; min-width:260px;}
+    .logo{
+      width:34px; height:34px; border-radius:10px;
+      background: conic-gradient(from 220deg, #2a3cff, #2bd576, #ff5a7a, #2a3cff);
+      box-shadow: 0 10px 25px rgba(42,60,255,.25);
+    }
+    .brand h1{font-size:15px; margin:0; letter-spacing:.2px}
+    .nav{
+      display:flex; gap:8px; flex-wrap:wrap;
+      padding:6px; border-radius:12px; background:rgba(255,255,255,.03);
+      border:1px solid rgba(255,255,255,.06);
+    }
+    .tabbtn{
+      border:1px solid rgba(255,255,255,.10);
+      background:transparent;
+      color:var(--muted);
+      padding:8px 10px;
+      border-radius:12px;
+      cursor:pointer;
+      font-size:13px;
+      transition:.15s ease;
+    }
+    .tabbtn:hover{transform:translateY(-1px); color:var(--text); border-color:rgba(255,255,255,.18)}
+    .tabbtn.active{
+      color:var(--text);
+      background:rgba(42,60,255,.20);
+      border-color:rgba(42,60,255,.55);
+    }
+
+    .right{
+      margin-left:auto;
+      display:flex; gap:10px; flex-wrap:wrap; align-items:center;
+    }
+    .chip{
+      display:flex; align-items:center; gap:8px;
+      padding:8px 10px;
+      border-radius:12px;
+      background:rgba(255,255,255,.03);
+      border:1px solid rgba(255,255,255,.08);
+      color:var(--muted);
+      font-size:12.5px;
+      white-space:nowrap;
+    }
+    select, input[type="text"], input[type="number"]{
+      background:rgba(0,0,0,.25);
+      color:var(--text);
+      border:1px solid rgba(255,255,255,.14);
+      border-radius:10px;
+      padding:7px 9px;
+      outline:none;
+      font-size:12.5px;
+    }
+    select{cursor:pointer}
+    .content{margin-top:16px}
+    .page{display:none}
+    .page.active{display:block}
+
+    .grid2{display:grid; grid-template-columns: 320px 1fr; gap:14px}
+    @media (max-width: 980px){ .grid2{grid-template-columns:1fr} .brand{min-width:auto} }
+
+    .card{
+      border:1px solid var(--line);
+      background:linear-gradient(180deg, rgba(255,255,255,.035), rgba(255,255,255,.015));
+      border-radius:var(--radius);
+      padding:14px;
+      box-shadow: var(--shadow);
+    }
+    .card h2{
+      margin:0 0 10px;
+      font-size:14px;
+      color:var(--text);
+      letter-spacing:.2px;
+    }
+    .sub{color:var(--muted); font-size:12.5px; margin-top:2px}
+    .sectionTitle{display:flex; align-items:baseline; justify-content:space-between; gap:10px}
+    .kpis{display:grid; grid-template-columns: repeat(3,1fr); gap:10px; margin-top:10px}
+    @media (max-width: 980px){ .kpis{grid-template-columns:1fr} }
+    .kpi{
+      border:1px solid rgba(255,255,255,.10);
+      background:rgba(0,0,0,.18);
+      border-radius:14px;
+      padding:12px;
+    }
+    .kpi .label{color:var(--muted); font-size:12px}
+    .kpi .value{font-size:18px; margin-top:5px}
+    .pill{
+      display:inline-flex; align-items:center; gap:6px;
+      padding:5px 9px; border-radius:999px;
+      background:rgba(255,255,255,.04);
+      border:1px solid rgba(255,255,255,.10);
+      color:var(--muted);
+      font-size:12px;
+    }
+    .btn{
+      background:linear-gradient(180deg, rgba(42,60,255,.95), rgba(28,42,168,.95));
+      border:1px solid rgba(42,60,255,.6);
+      color:white;
+      padding:10px 12px;
+      border-radius:14px;
+      cursor:pointer;
+      font-weight:600;
+      font-size:13px;
+      transition:.15s ease;
+      box-shadow: 0 12px 25px rgba(42,60,255,.22);
+    }
+    .btn:hover{transform:translateY(-1px)}
+    .btn.ghost{
+      background:transparent;
+      border-color:rgba(255,255,255,.18);
+      color:var(--text);
+      box-shadow:none;
+    }
+    .btn.danger{
+      background:linear-gradient(180deg, rgba(255,90,122,.95), rgba(180,45,70,.95));
+      border-color:rgba(255,90,122,.55);
+      box-shadow: 0 12px 25px rgba(255,90,122,.18);
+    }
+
+    .row{display:flex; gap:10px; flex-wrap:wrap}
+    .row > *{flex:1}
+    .field{display:flex; flex-direction:column; gap:6px; margin-bottom:10px}
+    .field label{font-size:12px; color:var(--muted)}
+    .checks{display:flex; flex-direction:column; gap:8px; padding:8px 0}
+    .checks .line{display:flex; align-items:center; justify-content:space-between; gap:8px}
+    .checks input{transform:scale(1.05)}
+    .mini{font-size:12px; color:var(--muted)}
+    .muted{color:var(--muted)}
+    .divider{height:1px; background:rgba(255,255,255,.10); margin:12px 0}
+
+    .tableWrap{overflow:auto; border-radius:14px; border:1px solid rgba(255,255,255,.10)}
+    table{width:100%; border-collapse:collapse; min-width:820px; background:rgba(0,0,0,.15)}
+    th,td{padding:10px 10px; border-bottom:1px solid rgba(255,255,255,.08); font-size:12.5px; vertical-align:top}
+    th{color:var(--muted); text-align:left; background:rgba(255,255,255,.03); position:sticky; top:0; z-index:1}
+    tr:hover td{background:rgba(255,255,255,.03)}
+    .qprev{max-width:420px; color:var(--text)}
+    .badge{
+      font-size:11px; padding:4px 8px; border-radius:999px;
+      border:1px solid rgba(255,255,255,.14); background:rgba(255,255,255,.03);
+      color:var(--muted); display:inline-flex; align-items:center; gap:6px;
+    }
+    .dot{width:8px; height:8px; border-radius:99px; display:inline-block}
+    .dot.ok{background:var(--ok)}
+    .dot.bad{background:var(--bad)}
+    .dot.warn{background:var(--warn)}
+
+    .progress{
+      height:10px; border-radius:999px; background:rgba(255,255,255,.07);
+      border:1px solid rgba(255,255,255,.10); overflow:hidden;
+    }
+    .progress > div{
+      height:100%;
+      background:linear-gradient(90deg, rgba(42,60,255,.95), rgba(43,213,118,.85));
+      width:0%;
+      transition: width .35s ease;
+    }
+    .log{
+      font-family:var(--mono);
+      font-size:11.5px;
+      color:#cfe0ff;
+      background:rgba(0,0,0,.35);
+      border:1px solid rgba(255,255,255,.10);
+      border-radius:14px;
+      padding:10px;
+      max-height:200px;
+      overflow:auto;
+      white-space:pre-wrap;
+      line-height:1.35;
+    }
+
+    /* Modal */
+    .modalBackdrop{
+      position:fixed; inset:0; background:rgba(0,0,0,.55);
+      display:none; align-items:center; justify-content:center; padding:18px;
+      z-index:60;
+    }
+    .modalBackdrop.show{display:flex}
+    .modal{
+      width:min(980px, 100%);
+      border-radius:18px;
+      border:1px solid rgba(255,255,255,.14);
+      background:linear-gradient(180deg, rgba(20,28,55,.95), rgba(12,16,32,.95));
+      box-shadow: 0 25px 70px rgba(0,0,0,.55);
+      overflow:hidden;
+    }
+    .modalHeader{
+      display:flex; align-items:center; justify-content:space-between;
+      padding:12px 14px;
+      border-bottom:1px solid rgba(255,255,255,.10);
+    }
+    .modalHeader h3{margin:0; font-size:14px}
+    .modalBody{padding:14px}
+    .cols2{display:grid; grid-template-columns:1fr 1fr; gap:12px}
+    @media (max-width: 900px){ .cols2{grid-template-columns:1fr} }
+    textarea{
+      width:100%; min-height:210px; resize:vertical;
+      background:rgba(0,0,0,.25);
+      color:var(--text);
+      border:1px solid rgba(255,255,255,.12);
+      border-radius:14px;
+      padding:10px;
+      outline:none;
+      font-family:var(--mono);
+      font-size:12px;
+      line-height:1.45;
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="topbar">
+      <div class="brand">
+        <div class="logo" aria-hidden="true"></div>
+        <div>
+          <h1>Primary Math LLM Benchmark</h1>
+          <div class="sub">Grades 4–6 · Cross-check grading · Reproducible test sets</div>
+        </div>
+      </div>
+
+      <div class="nav" role="tablist" aria-label="Primary navigation">
+        <button class="tabbtn active" data-page="dataset" role="tab">Dataset</button>
+        <button class="tabbtn" data-page="run" role="tab">Benchmark Run</button>
+        <button class="tabbtn" data-page="results" role="tab">Results</button>
+        <button class="tabbtn" data-page="rubric" role="tab">Rubric/Prompt</button>
+      </div>
+
+      <div class="right">
+        <div class="chip">
+          LLM1:
+          <select id="llm1">
+            <option>Qwen</option>
+            <option>DeepSeek</option>
+          </select>
+        </div>
+        <div class="chip">
+          LLM2:
+          <select id="llm2">
+            <option>DeepSeek</option>
+            <option>Qwen</option>
+          </select>
+        </div>
+        <div class="chip">
+          Prompt:
+          <select id="promptVer">
+            <option>v1</option>
+            <option>v2</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="content">
+      <!-- DATASET -->
+      <section class="page active" id="page-dataset" aria-label="Dataset page">
+        <div class="grid2">
+          <div class="card">
+            <div class="sectionTitle">
+              <h2>Dataset Filter</h2>
+              <span class="pill" id="selectedPill">Selected: 0 / 50</span>
+            </div>
+
+            <div class="divider"></div>
+
+            <div class="field">
+              <label>Datasets</label>
+              <div class="checks">
+                <div class="line"><span>Math23K</span><input type="checkbox" checked /></div>
+                <div class="line"><span>Ape210K</span><input type="checkbox" checked /></div>
+                <div class="line"><span>CMM-Math</span><input type="checkbox" checked /></div>
+              </div>
+            </div>
+
+            <div class="field">
+              <label>Grade / Level</label>
+              <div class="row" style="gap:8px">
+                <label class="pill"><input type="checkbox" checked /> 4</label>
+                <label class="pill"><input type="checkbox" checked /> 5</label>
+                <label class="pill"><input type="checkbox" checked /> 6</label>
+              </div>
+              <div class="mini">CMM-Math: filter Level 4–6</div>
+            </div>
+
+            <div class="field">
+              <label>Question Type</label>
+              <div class="row" style="gap:8px">
+                <label class="pill"><input type="checkbox" checked /> Text</label>
+                <label class="pill"><input type="checkbox" /> Image (optional OCR)</label>
+              </div>
+            </div>
+
+            <div class="field">
+              <label>Length</label>
+              <div class="row">
+                <input type="number" value="50" min="0" />
+                <input type="number" value="200" min="0" />
+              </div>
+              <div class="mini">Characters range</div>
+            </div>
+
+            <div class="field">
+              <label>Search</label>
+              <input id="searchBox" type="text" placeholder="keyword… (e.g., 分数 / 速度 / 方程)" />
+            </div>
+
+            <div class="divider"></div>
+
+            <div class="row">
+              <button class="btn ghost" id="btnClear">Clear selection</button>
+              <button class="btn" id="btnFixSet">Generate Fixed Test Set</button>
+            </div>
+            <div class="mini" id="fixedSetInfo" style="margin-top:10px; display:none;">
+              ✅ Fixed test set created: <span style="font-family:var(--mono)" id="testSetId"></span>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="sectionTitle">
+              <div>
+                <h2>Question List</h2>
+                <div class="sub">Pick 50 questions (Grades 4–6) to build a reproducible test set.</div>
+              </div>
+              <span class="pill">Sort: <span class="muted">Default</span></span>
+            </div>
+
+            <div class="divider"></div>
+
+            <div class="tableWrap">
+              <table aria-label="Question list">
+                <thead>
+                  <tr>
+                    <th style="width:56px;">Pick</th>
+                    <th style="width:84px;">QID</th>
+                    <th style="width:110px;">Source</th>
+                    <th style="width:70px;">Level</th>
+                    <th>Question</th>
+                    <th style="width:160px;">Truth</th>
+                    <th style="width:160px;">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="qTable"></tbody>
+              </table>
+            </div>
+
+            <div class="divider"></div>
+
+            <div class="row">
+              <div class="chip" style="flex:unset">
+                Test set target: <strong style="color:var(--text)">50</strong>
+              </div>
+              <div class="chip" style="flex:unset">
+                Current selection: <strong style="color:var(--text)" id="selCount2">0</strong>
+              </div>
+              <div style="flex:1"></div>
+              <button class="btn ghost" id="btnExport">Export selection (JSON)</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- RUN -->
+      <section class="page" id="page-run" aria-label="Benchmark run page">
+        <div class="grid2">
+          <div class="card">
+            <h2>Run Configuration</h2>
+            <div class="sub">Batch call 2 LLMs via API, record outputs, then cross-grade.</div>
+            <div class="divider"></div>
+
+            <div class="field">
+              <label>Test Set</label>
+              <select id="runTestSet">
+                <option value="">(select fixed test set first)</option>
+              </select>
+              <div class="mini">Run requires a fixed test_set_id for reproducibility.</div>
+            </div>
+
+            <div class="field">
+              <label>Output Format</label>
+              <label class="pill"><input type="checkbox" checked id="jsonOut" /> JSON structured output</label>
+              <div class="mini">Recommended fields: final_answer, equation, reasoning</div>
+            </div>
+
+            <div class="field">
+              <label>Reasoning Required</label>
+              <label class="pill"><input type="checkbox" checked id="needReason" /> Yes (show steps)</label>
+            </div>
+
+            <div class="field">
+              <label>Concurrency / Retry</label>
+              <div class="row">
+                <div>
+                  <label class="mini">Concurrency</label>
+                  <input type="number" value="5" min="1" max="20" />
+                </div>
+                <div>
+                  <label class="mini">Max Retries</label>
+                  <input type="number" value="2" min="0" max="5" />
+                </div>
+              </div>
+            </div>
+
+            <div class="divider"></div>
+
+            <div class="row">
+              <button class="btn" id="btnStart">Start Run</button>
+              <button class="btn ghost" id="btnResetRun">Reset</button>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="sectionTitle">
+              <div>
+                <h2>Run Progress</h2>
+                <div class="sub" id="runSub">Waiting for a fixed test set.</div>
+              </div>
+              <span class="pill" id="runStatusPill"><span class="dot warn"></span> Idle</span>
+            </div>
+
+            <div class="divider"></div>
+
+            <div class="kpis">
+              <div class="kpi">
+                <div class="label">Progress</div>
+                <div class="value"><span id="doneN">0</span> / <span id="totalN">0</span></div>
+              </div>
+              <div class="kpi">
+                <div class="label">Failed</div>
+                <div class="value" id="failN">0</div>
+              </div>
+              <div class="kpi">
+                <div class="label">Retries</div>
+                <div class="value" id="retryN">0</div>
+              </div>
+            </div>
+
+            <div style="margin-top:12px" class="progress" aria-label="Progress bar">
+              <div id="progBar"></div>
+            </div>
+
+            <div class="divider"></div>
+
+            <div class="tableWrap" style="max-height:240px; overflow:auto">
+              <table aria-label="Run item status">
+                <thead>
+                  <tr>
+                    <th style="width:84px;">QID</th>
+                    <th style="width:130px;">LLM1</th>
+                    <th style="width:130px;">LLM2</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody id="runTable"></tbody>
+              </table>
+            </div>
+
+            <div class="divider"></div>
+
+            <div class="row">
+              <button class="btn ghost" id="btnViewLogs">View Logs</button>
+              <button class="btn danger" id="btnStop">Stop</button>
+            </div>
+
+            <div id="logBox" style="display:none; margin-top:12px">
+              <div class="log" id="logs"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- RESULTS -->
+      <section class="page" id="page-results" aria-label="Results page">
+        <div class="card">
+          <div class="sectionTitle">
+            <div>
+              <h2>Results Overview</h2>
+              <div class="sub">Run summary, accuracy, rubric score, agreement rate.</div>
+            </div>
+            <span class="pill" id="runIdPill">Run: —</span>
+          </div>
+
+          <div class="divider"></div>
+
+          <div class="kpis">
+            <div class="kpi">
+              <div class="label">Accuracy (Final Answer)</div>
+              <div class="value"><span id="acc1">—</span> / <span id="acc2">—</span></div>
+              <div class="mini">LLM1 / LLM2</div>
+            </div>
+            <div class="kpi">
+              <div class="label">Avg Rubric Score (max 3)</div>
+              <div class="value"><span id="score1">—</span> / <span id="score2">—</span></div>
+              <div class="mini">LLM1 / LLM2</div>
+            </div>
+            <div class="kpi">
+              <div class="label">Agreement Rate</div>
+              <div class="value" id="agree">—</div>
+              <div class="mini">LLM1 answer == LLM2 answer</div>
+            </div>
+          </div>
+
+          <div class="divider"></div>
+
+          <div class="tableWrap">
+            <table aria-label="Result detail table">
+              <thead>
+                <tr>
+                  <th style="width:84px;">QID</th>
+                  <th style="width:140px;">Truth</th>
+                  <th style="width:140px;">LLM1 Answer</th>
+                  <th style="width:140px;">LLM2 Answer</th>
+                  <th style="width:160px;">Auto-check</th>
+                  <th style="width:140px;">Cross Grade</th>
+                  <th style="width:140px;">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="resTable"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- RUBRIC -->
+      <section class="page" id="page-rubric" aria-label="Rubric and prompt page">
+        <div class="grid2">
+          <div class="card">
+            <h2>Rubric Definition</h2>
+            <div class="sub">Define marking scheme for datasets with final answers but no marking steps.</div>
+            <div class="divider"></div>
+
+            <div class="checks">
+              <div class="line">
+                <span>Final Answer Correct <span class="muted">(+1)</span></span>
+                <input type="checkbox" checked />
+              </div>
+              <div class="line">
+                <span>Equation Correct <span class="muted">(+1)</span></span>
+                <input type="checkbox" checked />
+              </div>
+              <div class="line">
+                <span>Reasoning Consistent <span class="muted">(+1)</span></span>
+                <input type="checkbox" checked />
+              </div>
+            </div>
+
+            <div class="divider"></div>
+
+            <div class="field">
+              <label>Grader Output Requirements</label>
+              <div class="mini">Ask grader LLM to output JSON: score_breakdown + evidence.</div>
+              <textarea spellcheck="false">{
+  "final_answer_score": 1,
+  "equation_score": 1,
+  "reasoning_score": 0,
+  "total": 2,
+  "evidence": {
+    "truth": "...",
+    "model_final_answer": "...",
+    "equation_check": "...",
+    "notes": "..."
+  }
+}</textarea>
+            </div>
+
+            <div class="row">
+              <button class="btn">Save Rubric as v2</button>
+              <button class="btn ghost">View Versions</button>
+            </div>
+          </div>
+
+          <div class="card">
+            <h2>Prompt Editor</h2>
+            <div class="sub">Maintain solver prompt + grader prompt with versioning.</div>
+            <div class="divider"></div>
+
+            <div class="cols2">
+              <div>
+                <div class="field">
+                  <label>Solver Prompt</label>
+                  <textarea id="solverPrompt" spellcheck="false">You are a math solver for Chinese primary school grades 4–6.
+Return a JSON object with fields:
+- final_answer (string)
+- equation (string, optional)
+- reasoning (string, concise)
+
+Do NOT include extra keys.</textarea>
+                </div>
+              </div>
+              <div>
+                <div class="field">
+                  <label>Grader Prompt</label>
+                  <textarea id="graderPrompt" spellcheck="false">You are a strict grader.
+Given:
+- problem text
+- ground truth final answer
+- model output JSON
+
+Score rubric:
+final_answer (+1), equation (+1), reasoning (+1)
+
+Return JSON:
+{total, final_answer_score, equation_score, reasoning_score, evidence}</textarea>
+                </div>
+              </div>
+            </div>
+
+            <div class="row">
+              <button class="btn">Save Prompt as v2</button>
+              <button class="btn ghost">Bind to Next Run</button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <!-- Modal: Preview / Detail -->
+  <div class="modalBackdrop" id="modalBackdrop" role="dialog" aria-modal="true" aria-label="Question preview">
+    <div class="modal">
+      <div class="modalHeader">
+        <h3 id="modalTitle">Question Preview</h3>
+        <button class="btn ghost" id="modalClose">Close</button>
+      </div>
+      <div class="modalBody">
+        <div class="cols2">
+          <div>
+            <div class="pill" style="margin-bottom:10px" id="modalMeta">QID —</div>
+            <div class="card" style="box-shadow:none; background:rgba(0,0,0,.15)">
+              <h2 style="margin:0 0 8px; font-size:13px">Question</h2>
+              <div class="muted" id="modalQ"></div>
+            </div>
+          </div>
+          <div>
+            <div class="card" style="box-shadow:none; background:rgba(0,0,0,.15)">
+              <h2 style="margin:0 0 8px; font-size:13px">Ground Truth</h2>
+              <div class="muted" id="modalTruth"></div>
+              <div class="divider"></div>
+              <div class="mini">Equation (if available):</div>
+              <div class="muted" style="font-family:var(--mono)" id="modalEq"></div>
+            </div>
+          </div>
+        </div>
+        <div class="divider"></div>
+        <div class="mini">Tip: In real system, “Preview” can also show LLM1/LLM2 outputs + cross grading evidence.</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // --- Mock data (replace with API) ---
+    const questions = [
+      { id:"M23K-0001", source:"Math23K", level:5, q:"小明买了4袋苹果，每袋6个，一共有多少个苹果？", truth:"24", eq:"6×4=24" },
+      { id:"CMM-0134", source:"CMM-Math", level:4, q:"一辆车每小时行驶60千米，2.5小时行驶多少千米？", truth:"150", eq:"60×2.5=150" },
+      { id:"APE-2049", source:"Ape210K", level:6, q:"把3/4升果汁平均分给3个人，每人多少升？", truth:"1/4", eq:"(3/4)÷3=1/4" },
+      { id:"M23K-0072", source:"Math23K", level:4, q:"长方形长8厘米，宽5厘米，周长是多少厘米？", truth:"26", eq:"2×(8+5)=26" },
+      { id:"APE-1120", source:"Ape210K", level:5, q:"商店打8折，原价200元的衣服现价多少元？", truth:"160", eq:"200×0.8=160" },
+      { id:"CMM-0911", source:"CMM-Math", level:6, q:"一个数的3倍比它的2倍多18，这个数是多少？", truth:"18", eq:"3x-2x=18" },
+    ];
+
+    // --- State ---
+    const state = {
+      selected: new Set(),
+      fixedSetId: "",
+      run: {
+        id: "",
+        running: false,
+        total: 0,
+        done: 0,
+        failed: 0,
+        retries: 0,
+        items: []
+      },
+      results: [] // per Q: truth, llm1, llm2, auto, score
+    };
+
+    // --- Helpers ---
+    const $ = (sel) => document.querySelector(sel);
+    const $$ = (sel) => Array.from(document.querySelectorAll(sel));
+
+    function setActivePage(pageName){
+      $$(".tabbtn").forEach(b => b.classList.toggle("active", b.dataset.page === pageName));
+      $$(".page").forEach(p => p.classList.remove("active"));
+      $("#page-" + pageName).classList.add("active");
+    }
+
+    function updateSelectedUI(){
+      const n = state.selected.size;
+      $("#selectedPill").textContent = `Selected: ${n} / 50`;
+      $("#selCount2").textContent = String(n);
+    }
+
+    function openModal(q){
+      $("#modalTitle").textContent = "Question Preview";
+      $("#modalMeta").textContent = `${q.id} · ${q.source} · Level ${q.level}`;
+      $("#modalQ").textContent = q.q;
+      $("#modalTruth").textContent = q.truth;
+      $("#modalEq").textContent = q.eq || "—";
+      $("#modalBackdrop").classList.add("show");
+    }
+
+    function closeModal(){ $("#modalBackdrop").classList.remove("show"); }
+
+    // --- Render question list ---
+    function renderQTable(filterText=""){
+      const tbody = $("#qTable");
+      tbody.innerHTML = "";
+      const ft = (filterText || "").trim();
+      const rows = questions
+        .filter(q => !ft || q.q.includes(ft) || q.id.includes(ft) || q.source.includes(ft))
+        .map(q => {
+          const checked = state.selected.has(q.id) ? "checked" : "";
+          return `
+            <tr>
+              <td><input type="checkbox" data-pick="${q.id}" ${checked}></td>
+              <td style="font-family:var(--mono)">${q.id}</td>
+              <td>${q.source}</td>
+              <td><span class="badge"><span class="dot warn"></span>${q.level}</span></td>
+              <td class="qprev">${q.q}</td>
+              <td><span class="badge"><span class="dot ok"></span>${q.truth}</span></td>
+              <td>
+                <button class="btn ghost" data-preview="${q.id}" style="padding:7px 10px;border-radius:12px;font-weight:600">Preview</button>
+                <button class="btn" data-add="${q.id}" style="padding:7px 10px;border-radius:12px;font-weight:700">Add</button>
+              </td>
+            </tr>
+          `;
+        }).join("");
+      tbody.innerHTML = rows;
+
+      // bind events
+      $$("[data-pick]").forEach(cb => {
+        cb.addEventListener("change", (e) => {
+          const id = e.target.dataset.pick;
+          if(e.target.checked){
+            if(state.selected.size >= 50){ e.target.checked = false; alert("已达到 50 题上限"); return; }
+            state.selected.add(id);
+          }else{
+            state.selected.delete(id);
+          }
+          updateSelectedUI();
+        });
+      });
+      $$("[data-add]").forEach(btn => {
+        btn.addEventListener("click", (e) => {
+          const id = e.target.dataset.add;
+          if(state.selected.has(id)) return;
+          if(state.selected.size >= 50){ alert("已达到 50 题上限"); return; }
+          state.selected.add(id);
+          renderQTable($("#searchBox").value);
+          updateSelectedUI();
+        });
+      });
+      $$("[data-preview]").forEach(btn => {
+        btn.addEventListener("click", (e) => {
+          const q = questions.find(x => x.id === e.target.dataset.preview);
+          if(q) openModal(q);
+        });
+      });
+    }
+
+    // --- Run simulation (replace with backend orchestrator) ---
+    function simulateLLMAnswer(q, modelName){
+      // Very small mock: intentionally inject some mistakes
+      const truth = q.truth;
+      if(modelName === "Qwen"){
+        if(q.id === "CMM-0911") return { final_answer:"18", equation:"x=18", reasoning:"3x-2x=18，所以x=18" };
+        if(q.id === "APE-2049") return { final_answer:"0.25", equation:"(3/4)/3=0.25", reasoning:"分数转小数计算" };
+        return { final_answer: truth, equation:q.eq, reasoning:"按题意列式计算" };
+      }else{
+        if(q.id === "M23K-0072") return { final_answer:"25", equation:"2*(8+5)=25", reasoning:"计算周长" }; // wrong
+        if(q.id === "CMM-0134") return { final_answer:"150", equation:"60*2.5=150", reasoning:"速度×时间" };
+        return { final_answer: truth, equation:q.eq, reasoning:"列式求解" };
+      }
+    }
+
+    function normalizeAnswer(ans){
+      return String(ans).trim()
+        .replace(/\s+/g,"")
+        .replace(/[，,。]/g,"")
+        .replace(/^答案[:：]/,"");
+    }
+
+    function eqNumeric(a,b){
+      // very naive numeric equivalence for demo
+      const na = normalizeAnswer(a);
+      const nb = normalizeAnswer(b);
+      if(na === nb) return true;
+      // fraction vs decimal simple case like 1/4 vs 0.25
+      const frac = (s) => {
+        const m = s.match(/^(-?\d+)\s*\/\s*(-?\d+)$/);
+        if(!m) return null;
+        const num = Number(m[1]), den = Number(m[2]);
+        if(!isFinite(num) || !isFinite(den) || den === 0) return null;
+        return num/den;
+      };
+      const fa = frac(na), fb = frac(nb);
+      if(fa!=null && fb!=null) return Math.abs(fa-fb) < 1e-9;
+      if(fa!=null && isFinite(Number(nb))) return Math.abs(fa-Number(nb)) < 1e-9;
+      if(fb!=null && isFinite(Number(na))) return Math.abs(fb-Number(na)) < 1e-9;
+      if(isFinite(Number(na)) && isFinite(Number(nb))) return Math.abs(Number(na)-Number(nb)) < 1e-9;
+      return false;
+    }
+
+    function crossGrade(truth, modelOut){
+      // rubric: answer + equation + reasoning (max 3)
+      const ansOK = eqNumeric(truth, modelOut.final_answer) ? 1 : 0;
+      const eqOK = (modelOut.equation && modelOut.equation.length >= 3) ? 1 : 0; // demo only
+      const rsOK = (modelOut.reasoning && modelOut.reasoning.length >= 6) ? 1 : 0;
+      return { total: ansOK+eqOK+rsOK, ansOK, eqOK, rsOK };
+    }
+
+    function renderRunTable(){
+      const tbody = $("#runTable");
+      tbody.innerHTML = state.run.items.map(it => {
+        const st = it.status;
+        const badge = st === "Done"
+          ? `<span class="badge"><span class="dot ok"></span>${st}</span>`
+          : st === "Failed"
+            ? `<span class="badge"><span class="dot bad"></span>${st}</span>`
+            : `<span class="badge"><span class="dot warn"></span>${st}</span>`;
+        return `
+          <tr>
+            <td style="font-family:var(--mono)">${it.qid}</td>
+            <td>${it.llm1 || "—"}</td>
+            <td>${it.llm2 || "—"}</td>
+            <td>${badge}</td>
+          </tr>
+        `;
+      }).join("");
+    }
+
+    function renderResults(){
+      const tbody = $("#resTable");
+      tbody.innerHTML = state.results.map(r => {
+        const auto1 = r.auto1 ? `<span class="badge"><span class="dot ok"></span>LLM1 OK</span>` : `<span class="badge"><span class="dot bad"></span>LLM1 NO</span>`;
+        const auto2 = r.auto2 ? `<span class="badge"><span class="dot ok"></span>LLM2 OK</span>` : `<span class="badge"><span class="dot bad"></span>LLM2 NO</span>`;
+        return `
+          <tr>
+            <td style="font-family:var(--mono)">${r.qid}</td>
+            <td><span class="badge"><span class="dot ok"></span>${r.truth}</span></td>
+            <td>${r.llm1.final_answer}</td>
+            <td>${r.llm2.final_answer}</td>
+            <td>${auto1} ${auto2}</td>
+            <td>
+              <span class="badge"><span class="dot warn"></span>L2→L1 ${r.score21.total}/3</span>
+              <span class="badge"><span class="dot warn"></span>L1→L2 ${r.score12.total}/3</span>
+            </td>
+            <td>
+              <button class="btn ghost" data-detail="${r.qid}" style="padding:7px 10px;border-radius:12px;font-weight:700">Detail</button>
+            </td>
+          </tr>
+        `;
+      }).join("");
+
+      $$("[data-detail]").forEach(btn => {
+        btn.addEventListener("click", (e) => {
+          const qid = e.target.dataset.detail;
+          const r = state.results.find(x => x.qid === qid);
+          const q = questions.find(x => x.id === qid);
+          if(!r || !q) return;
+          $("#modalTitle").textContent = "Result Detail";
+          $("#modalMeta").textContent = `${qid} · ${q.source} · Level ${q.level}`;
+          $("#modalQ").textContent = q.q;
+
+          $("#modalTruth").innerHTML =
+            `Truth: ${q.truth}\n\n` +
+            `LLM1 (${ $("#llm1").value }): ${JSON.stringify(r.llm1, null, 2)}\n\n` +
+            `LLM2 (${ $("#llm2").value }): ${JSON.stringify(r.llm2, null, 2)}\n\n` +
+            `Cross grade L2→L1: ${JSON.stringify(r.score21)}\n` +
+            `Cross grade L1→L2: ${JSON.stringify(r.score12)}`;
+          $("#modalEq").textContent = q.eq || "—";
+          $("#modalBackdrop").classList.add("show");
+        });
+      });
+    }
+
+    function updateRunKPIs(){
+      $("#doneN").textContent = String(state.run.done);
+      $("#totalN").textContent = String(state.run.total);
+      $("#failN").textContent = String(state.run.failed);
+      $("#retryN").textContent = String(state.run.retries);
+      const pct = state.run.total ? (state.run.done / state.run.total) * 100 : 0;
+      $("#progBar").style.width = pct.toFixed(0) + "%";
+    }
+
+    function logLine(s){
+      const box = $("#logs");
+      const ts = new Date().toLocaleTimeString();
+      box.textContent += `[${ts}] ${s}\n`;
+      box.scrollTop = box.scrollHeight;
+    }
+
+    function computeSummary(){
+      const n = state.results.length || 1;
+      const llm1Name = $("#llm1").value;
+      const llm2Name = $("#llm2").value;
+
+      const acc1 = state.results.filter(r => r.auto1).length / n;
+      const acc2 = state.results.filter(r => r.auto2).length / n;
+
+      const s1 = state.results.reduce((a,r)=>a+r.score21.total,0) / n; // L2 grades L1
+      const s2 = state.results.reduce((a,r)=>a+r.score12.total,0) / n; // L1 grades L2
+
+      const agree = state.results.filter(r => normalizeAnswer(r.llm1.final_answer) === normalizeAnswer(r.llm2.final_answer)).length / n;
+
+      $("#runIdPill").textContent = `Run: ${state.run.id || "—"}`;
+      $("#acc1").textContent = `${llm1Name} ${(acc1*100).toFixed(0)}%`;
+      $("#acc2").textContent = `${llm2Name} ${(acc2*100).toFixed(0)}%`;
+      $("#score1").textContent = `${llm1Name} ${s1.toFixed(2)}`;
+      $("#score2").textContent = `${llm2Name} ${s2.toFixed(2)}`;
+      $("#agree").textContent = (agree*100).toFixed(0) + "%";
+    }
+
+    // --- Wire the navigation ---
+    $$(".tabbtn").forEach(btn => {
+      btn.addEventListener("click", () => setActivePage(btn.dataset.page));
+    });
+
+    // --- Dataset actions ---
+    $("#searchBox").addEventListener("input", (e) => renderQTable(e.target.value));
+
+    $("#btnClear").addEventListener("click", () => {
+      state.selected.clear();
+      state.fixedSetId = "";
+      $("#fixedSetInfo").style.display = "none";
+      $("#runTestSet").innerHTML = `<option value="">(select fixed test set first)</option>`;
+      renderQTable($("#searchBox").value);
+      updateSelectedUI();
+    });
+
+    $("#btnFixSet").addEventListener("click", () => {
+      if(state.selected.size === 0){
+        alert("请先选择一些题目（建议 50 题）。");
+        return;
+      }
+      // mock fixed id
+      state.fixedSetId = "test_set_" + Math.random().toString(16).slice(2,8).toUpperCase();
+      $("#testSetId").textContent = state.fixedSetId;
+      $("#fixedSetInfo").style.display = "block";
+
+      $("#runTestSet").innerHTML = `<option value="${state.fixedSetId}">${state.fixedSetId}</option>`;
+      $("#runSub").textContent = `Ready: ${state.fixedSetId} · Selected ${state.selected.size} questions`;
+      alert("已生成固定测试集: " + state.fixedSetId);
+    });
+
+    $("#btnExport").addEventListener("click", () => {
+      const picked = Array.from(state.selected).map(id => questions.find(q => q.id === id)).filter(Boolean);
+      const payload = { fixed_test_set_id: state.fixedSetId || null, size: picked.length, items: picked };
+      const json = JSON.stringify(payload, null, 2);
+
+      // download
+      const blob = new Blob([json], {type:"application/json"});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = (state.fixedSetId || "selection") + ".json";
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+
+    // --- Modal actions ---
+    $("#modalClose").addEventListener("click", closeModal);
+    $("#modalBackdrop").addEventListener("click", (e) => { if(e.target.id === "modalBackdrop") closeModal(); });
+    document.addEventListener("keydown", (e) => { if(e.key === "Escape") closeModal(); });
+
+    // --- Run actions ---
+    $("#btnViewLogs").addEventListener("click", () => {
+      $("#logBox").style.display = $("#logBox").style.display === "none" ? "block" : "none";
+    });
+
+    $("#btnResetRun").addEventListener("click", () => {
+      state.run = { id:"", running:false, total:0, done:0, failed:0, retries:0, items:[] };
+      state.results = [];
+      $("#logs").textContent = "";
+      $("#progBar").style.width = "0%";
+      $("#runStatusPill").innerHTML = `<span class="dot warn"></span> Idle`;
+      $("#runIdPill").textContent = "Run: —";
+      $("#runSub").textContent = state.fixedSetId ? `Ready: ${state.fixedSetId} · Selected ${state.selected.size} questions` : "Waiting for a fixed test set.";
+      renderRunTable();
+      renderResults();
+      computeSummary();
+    });
+
+    $("#btnStop").addEventListener("click", () => {
+      if(!state.run.running) return;
+      state.run.running = false;
+      $("#runStatusPill").innerHTML = `<span class="dot bad"></span> Stopped`;
+      logLine("Run stopped by user.");
+    });
+
+    $("#btnStart").addEventListener("click", async () => {
+      const testSet = $("#runTestSet").value;
+      if(!testSet){
+        alert("请先在 Dataset 页面生成 fixed test set。");
+        return;
+      }
+      if(state.run.running){
+        alert("Run already running.");
+        return;
+      }
+      const llm1 = $("#llm1").value;
+      const llm2 = $("#llm2").value;
+
+      const picked = Array.from(state.selected).map(id => questions.find(q => q.id === id)).filter(Boolean);
+      // demo: if < 50, still run
+      state.run.id = "R" + Date.now();
+      state.run.running = true;
+      state.run.total = picked.length;
+      state.run.done = 0;
+      state.run.failed = 0;
+      state.run.retries = 0;
+      state.run.items = picked.map(q => ({ qid:q.id, llm1:llm1, llm2:llm2, status:"Pending" }));
+      state.results = [];
+
+      $("#runStatusPill").innerHTML = `<span class="dot warn"></span> Running`;
+      $("#runIdPill").textContent = `Run: ${state.run.id}`;
+      $("#runSub").textContent = `Running ${picked.length} questions · ${llm1} vs ${llm2} · Prompt ${$("#promptVer").value}`;
+      $("#logBox").style.display = "block";
+      logLine(`Run started: ${state.run.id}`);
+      renderRunTable();
+      updateRunKPIs();
+
+      // simulate sequential for UI demo
+      for(const q of picked){
+        if(!state.run.running) break;
+
+        // update item status
+        const item = state.run.items.find(it => it.qid === q.id);
+        item.status = "Running";
+        renderRunTable();
+        logLine(`Solving ${q.id}...`);
+
+        // simulate latency
+        await new Promise(r => setTimeout(r, 350));
+
+        // mock outputs
+        let out1 = simulateLLMAnswer(q, llm1);
+        let out2 = simulateLLMAnswer(q, llm2);
+
+        // mock occasional failure
+        if(q.id === "APE-1120" && llm2 === "DeepSeek"){
+          state.run.retries += 1;
+          logLine(`API transient error on ${q.id}, retrying...`);
+          await new Promise(r => setTimeout(r, 250));
+        }
+
+        // auto-check vs truth
+        const auto1 = eqNumeric(q.truth, out1.final_answer);
+        const auto2 = eqNumeric(q.truth, out2.final_answer);
+
+        // cross grade (grader simulated)
+        const score21 = crossGrade(q.truth, out1); // LLM2 grades LLM1
+        const score12 = crossGrade(q.truth, out2); // LLM1 grades LLM2
+
+        state.results.push({ qid:q.id, truth:q.truth, llm1:out1, llm2:out2, auto1, auto2, score21, score12 });
+
+        item.status = "Done";
+        state.run.done += 1;
+        renderRunTable();
+        updateRunKPIs();
+        renderResults();
+        computeSummary();
+      }
+
+      if(state.run.running){
+        state.run.running = false;
+        $("#runStatusPill").innerHTML = `<span class="dot ok"></span> Completed`;
+        logLine("Run completed.");
+      }
+    });
+
+    // --- Init ---
+    renderQTable();
+    updateSelectedUI();
+    renderRunTable();
+    renderResults();
+    computeSummary();
+  </script>
+</body>
+</html>

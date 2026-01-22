@@ -1,0 +1,590 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>小学数学判卷小工具</title>
+  <style>
+    :root{
+      --bg:#f6f7fb;
+      --panel:#ffffff;
+      --line:#e7e9f2;
+      --text:#1f2430;
+      --muted:#667085;
+      --brand:#3b82f6;
+      --ok:#22c55e;
+      --bad:#ef4444;
+      --shadow: 0 10px 24px rgba(16,24,40,.08);
+      --r:16px;
+      --r2:12px;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace;
+      --sans: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Noto Sans", Arial;
+    }
+    *{box-sizing:border-box}
+    body{margin:0; font-family:var(--sans); color:var(--text); background:var(--bg);}
+    .wrap{max-width:1200px; margin:0 auto; padding:18px;}
+    .topbar{
+      display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;
+      padding:14px 16px; border:1px solid var(--line); border-radius:var(--r);
+      background:var(--panel); box-shadow:var(--shadow);
+    }
+    .brand{display:flex; align-items:center; gap:10px;}
+    .logo{width:34px; height:34px; border-radius:12px; background:linear-gradient(135deg, #60a5fa, #2563eb);}
+    .brand h1{font-size:15px; margin:0}
+    .sub{font-size:12.5px; color:var(--muted); margin-top:2px}
+    .stats{display:flex; gap:10px; flex-wrap:wrap; align-items:center;}
+    .pill{
+      display:flex; gap:8px; align-items:center;
+      padding:8px 10px; border:1px solid var(--line); border-radius:999px;
+      background:#fbfcff; color:var(--muted); font-size:12.5px;
+    }
+    .pill strong{color:var(--text)}
+    .btn{
+      border:1px solid var(--line);
+      background:var(--panel);
+      padding:9px 12px; border-radius:999px;
+      cursor:pointer; font-weight:600; font-size:13px;
+      transition:.12s ease;
+    }
+    .btn.primary{background:var(--brand); border-color:var(--brand); color:#fff;}
+    .btn:hover{transform:translateY(-1px)}
+    .btn:active{transform:translateY(0px)}
+    input[type="file"]{display:none}
+
+    .grid{display:grid; grid-template-columns: 300px 1fr 330px; gap:14px; margin-top:14px;}
+    @media (max-width: 1050px){ .grid{grid-template-columns:1fr} }
+
+    .card{
+      border:1px solid var(--line);
+      background:var(--panel);
+      border-radius:var(--r);
+      box-shadow:var(--shadow);
+      padding:14px;
+    }
+    .card h2{margin:0 0 10px; font-size:14px;}
+    .muted{color:var(--muted); font-size:12.5px;}
+    .divider{height:1px; background:var(--line); margin:12px 0;}
+    .list{display:flex; flex-direction:column; gap:8px; max-height:520px; overflow:auto; padding-right:4px;}
+    .item{
+      border:1px solid var(--line);
+      border-radius:14px;
+      padding:10px;
+      background:#fbfcff;
+      cursor:pointer;
+      display:flex; gap:10px; align-items:flex-start; justify-content:space-between;
+    }
+    .item.active{border-color:rgba(59,130,246,.45); box-shadow:0 0 0 3px rgba(59,130,246,.15)}
+    .tag{
+      font-size:11px; padding:4px 8px; border-radius:999px;
+      border:1px solid var(--line); color:var(--muted); background:#fff;
+      white-space:nowrap;
+    }
+    .tag.ok{border-color:rgba(34,197,94,.25); color:#15803d}
+    .tag.bad{border-color:rgba(239,68,68,.25); color:#b91c1c}
+    .qtitle{font-size:13px; line-height:1.3;}
+    .qmeta{margin-top:4px; font-size:12px; color:var(--muted); font-family:var(--mono)}
+    textarea{
+      width:100%; min-height:120px; resize:vertical;
+      border:1px solid var(--line); border-radius:14px;
+      padding:10px; outline:none; font-size:13px;
+      font-family:var(--sans);
+      background:#fbfcff;
+    }
+    .answerBox{
+      border:1px dashed rgba(59,130,246,.45);
+      background:rgba(59,130,246,.05);
+      padding:10px; border-radius:14px;
+      display:flex; align-items:center; justify-content:space-between; gap:10px;
+    }
+    .answerBox code{font-family:var(--mono); font-size:13px;}
+    .row{display:flex; gap:10px; flex-wrap:wrap;}
+    .row > *{flex:1}
+    .field{display:flex; flex-direction:column; gap:6px; margin-bottom:10px;}
+    .field label{font-size:12px; color:var(--muted);}
+    .scoreInput{
+      width:100%;
+      border:1px solid var(--line);
+      border-radius:14px;
+      padding:10px;
+      font-size:14px;
+      background:#fbfcff;
+    }
+    .resultBadge{
+      display:inline-flex; align-items:center; gap:8px;
+      padding:8px 10px; border-radius:999px;
+      border:1px solid var(--line);
+      font-size:12.5px; color:var(--muted);
+      background:#fff;
+    }
+    .dot{width:10px; height:10px; border-radius:999px; background:#cbd5e1;}
+    .dot.ok{background:var(--ok)}
+    .dot.bad{background:var(--bad)}
+    .smallBtn{padding:8px 10px; border-radius:12px; font-size:12.5px;}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <div class="brand">
+        <div class="logo"></div>
+        <div>
+          <h1>小学数学判卷小工具</h1>
+          <div class="sub">输入学生答案 → 自动判对错 → 计分与导出结果</div>
+        </div>
+      </div>
+
+      <div class="stats">
+        <div class="pill">已判：<strong id="doneCount">0</strong> / <strong id="totalCount">0</strong></div>
+        <div class="pill">总分：<strong id="sumScore">0</strong></div>
+        
+        <!-- Optimized: Dataset Selector -->
+        <select id="datasetSelect" class="btn" style="max-width:160px; text-overflow:ellipsis;">
+          <option value="demo">示例题目</option>
+        </select>
+        <button class="btn primary" id="btnLoadServer">载入题库</button>
+
+        <!-- Less prominent local file import -->
+        <label class="btn" for="fileInput" title="导入本地 JSON 文件">📂</label>
+        <input id="fileInput" type="file" accept=".json" />
+
+        <button class="btn" id="btnExport">导出结果</button>
+      </div>
+    </div>
+
+    <div class="grid">
+      <!-- Left: list -->
+      <div class="card">
+        <h2>题目列表</h2>
+        <div class="muted">点击切换题目。绿色=已判且正确，红色=已判但错误。</div>
+        <div class="divider"></div>
+        <div class="list" id="qList"></div>
+      </div>
+
+      <!-- Middle: question -->
+      <div class="card">
+        <div class="row" style="align-items:center">
+          <div>
+            <h2 id="qHeader">当前题目</h2>
+            <div class="muted" id="qInfo">—</div>
+          </div>
+          <div style="flex:0 0 auto">
+            <button class="btn smallBtn" id="btnPrev">上一题</button>
+            <button class="btn smallBtn" id="btnNext">下一题</button>
+          </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="field">
+          <label>题干</label>
+          <textarea id="qText" readonly></textarea>
+        </div>
+
+        <div class="answerBox">
+          <div>
+            <div class="muted">标准答案（可隐藏/显示）</div>
+            <div><code id="truthText">***</code></div>
+          </div>
+          <button class="btn smallBtn" id="btnToggleTruth">显示</button>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="muted">
+          判卷逻辑：<br/>
+          - 只对比“最终答案”是否相同（支持 1/4 = 0.25 这种简单数值等价）<br/>
+          - 可以手动改分、写备注
+        </div>
+      </div>
+
+      <!-- Right: grading -->
+      <div class="card">
+        <h2>判卷面板</h2>
+        <div class="muted">输入学生答案 → 点击“判卷”</div>
+        
+        <!-- AI Toggle -->
+        <div style="margin-top:8px; display:flex; align-items:center; gap:8px;">
+          <input type="checkbox" id="useAI" style="cursor:pointer">
+          <label for="useAI" style="cursor:pointer; font-size:13px; color:var(--brand); font-weight:600">✨ 启用 AI 智能判卷 (Java Agent)</label>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="field">
+          <label>学生答案</label>
+          <input class="scoreInput" id="studentAns" placeholder="例如：24 / 0.25 / 1/4 / 150 千米" />
+        </div>
+
+        <div class="row">
+          <button class="btn primary" id="btnJudge">判卷</button>
+          <button class="btn" id="btnClearAns">清空</button>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="field">
+          <label>判卷结果</label>
+          <div class="resultBadge" id="resultBadge">
+            <span class="dot" id="resultDot"></span>
+            <span id="resultText">未判</span>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="field">
+            <label>得分（本题）</label>
+            <input class="scoreInput" id="scoreInput" type="number" min="0" step="1" value="0" />
+          </div>
+          <div class="field">
+            <label>本题满分</label>
+            <input class="scoreInput" id="maxScoreInput" type="number" min="1" step="1" value="1" />
+          </div>
+        </div>
+
+        <div class="field">
+          <label>备注（可选）</label>
+          <textarea id="noteBox" placeholder="例如：单位没写、算式不完整、粗心算错…"></textarea>
+        </div>
+
+        <div class="row">
+          <button class="btn" id="btnSave">保存本题</button>
+          <button class="btn" id="btnResetThis">重置本题记录</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ====== 简单可用版：题目结构 ======
+    // { id, text, truth, meta(optional), maxScore(optional) }
+    let questions = [];
+    let idx = 0;
+    let showTruth = false;
+
+    // grading records by id
+    const records = new Map(); // id -> {studentAns, isCorrect, score, maxScore, note, judgedAt}
+
+    // ====== Demo ======
+    const demo = [
+      { id:"Q001", meta:"四则运算 · G4", text:"小明买了4袋苹果，每袋6个，一共有多少个苹果？", truth:"24", maxScore:1 },
+      { id:"Q002", meta:"应用题 · G5", text:"一辆车每小时行驶60千米，2.5小时行驶多少千米？", truth:"150", maxScore:1 },
+      { id:"Q003", meta:"分数 · G6", text:"把3/4升果汁平均分给3个人，每人多少升？", truth:"1/4", maxScore:1 },
+      { id:"Q004", meta:"几何 · G4", text:"长方形长8厘米，宽5厘米，周长是多少厘米？", truth:"26", maxScore:1 }
+    ];
+
+    // ====== Utils ======
+    const $ = (s)=>document.querySelector(s);
+    const normalize = (s)=>String(s??"").trim()
+      .replace(/\s+/g,"")
+      .replace(/[，,。]/g,"")
+      .replace(/^答案[:：]/,"")
+      .replace(/千米/g,"").replace(/公里/g,"").replace(/厘米/g,"").replace(/cm/ig,"");
+
+    function fracToNum(s){
+      const m = s.match(/^(-?\d+)\s*\/\s*(-?\d+)$/);
+      if(!m) return null;
+      const a = Number(m[1]), b = Number(m[2]);
+      if(!isFinite(a) || !isFinite(b) || b===0) return null;
+      return a/b;
+    }
+
+    function eqAnswer(a,b){
+      const na = normalize(a), nb = normalize(b);
+      if(na === nb) return true;
+
+      const fa = fracToNum(na), fb = fracToNum(nb);
+      if(fa!=null && fb!=null) return Math.abs(fa-fb) < 1e-9;
+      if(fa!=null && isFinite(Number(nb))) return Math.abs(fa-Number(nb)) < 1e-9;
+      if(fb!=null && isFinite(Number(na))) return Math.abs(fb-Number(na)) < 1e-9;
+
+      if(isFinite(Number(na)) && isFinite(Number(nb))) return Math.abs(Number(na)-Number(nb)) < 1e-9;
+      return false;
+    }
+
+    function setBadge(state){
+      const dot = $("#resultDot");
+      const text = $("#resultText");
+      dot.className = "dot";
+      if(state==="ok"){ dot.classList.add("ok"); text.textContent="正确"; }
+      else if(state==="bad"){ dot.classList.add("bad"); text.textContent="错误"; }
+      else { text.textContent="未判"; }
+    }
+
+    // ====== Render ======
+    function renderList(){
+      const box = $("#qList");
+      box.innerHTML = "";
+
+      questions.forEach((q, i)=>{
+        const rec = records.get(q.id);
+        const tag = rec
+          ? (rec.isCorrect ? `<span class="tag ok">已判·正确</span>` : `<span class="tag bad">已判·错误</span>`)
+          : `<span class="tag">未判</span>`;
+
+        const el = document.createElement("div");
+        el.className = "item" + (i===idx ? " active":"");
+        el.innerHTML = `
+          <div style="min-width:0">
+            <div class="qtitle">${q.id}：${q.text.slice(0,18)}${q.text.length>18?"…":""}</div>
+            <div class="qmeta">${q.meta ?? ""}</div>
+          </div>
+          <div>${tag}</div>
+        `;
+        el.onclick = ()=>{ idx=i; loadCurrent(); };
+        box.appendChild(el);
+      });
+
+      $("#totalCount").textContent = questions.length;
+      $("#doneCount").textContent = records.size;
+      $("#sumScore").textContent = sumScore();
+    }
+
+    function sumScore(){
+      let s = 0;
+      for(const r of records.values()) s += Number(r.score||0);
+      return s;
+    }
+
+    function loadCurrent(){
+      if(!questions.length){
+        $("#qHeader").textContent = "当前题目";
+        $("#qInfo").textContent = "—";
+        $("#qText").value = "";
+        $("#truthText").textContent = "***";
+        $("#studentAns").value = "";
+        $("#noteBox").value = "";
+        $("#scoreInput").value = 0;
+        $("#maxScoreInput").value = 1;
+        setBadge("idle");
+        renderList();
+        return;
+      }
+
+      const q = questions[idx];
+      $("#qHeader").textContent = `当前题目：${q.id}`;
+      $("#qInfo").textContent = q.meta ?? "";
+      $("#qText").value = q.text;
+
+      $("#maxScoreInput").value = q.maxScore ?? 1;
+
+      // truth show/hide
+      $("#truthText").textContent = showTruth ? q.truth : "***";
+      $("#btnToggleTruth").textContent = showTruth ? "隐藏" : "显示";
+
+      // load record if exists
+      const rec = records.get(q.id);
+      if(rec){
+        $("#studentAns").value = rec.studentAns ?? "";
+        $("#noteBox").value = rec.note ?? "";
+        $("#scoreInput").value = rec.score ?? 0;
+        $("#maxScoreInput").value = rec.maxScore ?? ($("#maxScoreInput").value);
+        setBadge(rec.isCorrect ? "ok":"bad");
+      }else{
+        $("#studentAns").value = "";
+        $("#noteBox").value = "";
+        $("#scoreInput").value = 0;
+        setBadge("idle");
+      }
+
+      renderList();
+    }
+
+    // ====== Actions ======
+    $("#btnToggleTruth").onclick = ()=>{
+      showTruth = !showTruth;
+      loadCurrent();
+    };
+
+    $("#btnPrev").onclick = ()=>{
+      if(!questions.length) return;
+      idx = (idx - 1 + questions.length) % questions.length;
+      loadCurrent();
+    };
+
+    $("#btnNext").onclick = ()=>{
+      if(!questions.length) return;
+      idx = (idx + 1) % questions.length;
+      loadCurrent();
+    };
+
+    // ====== Server Logic ======
+    async function initDatasets(){
+      try{
+        const res = await fetch("/api/datasets");
+        if(res.ok){
+          const list = await res.json();
+          const sel = $("#datasetSelect");
+          sel.innerHTML = `<option value="demo">示例题目 (Demo)</option>`;
+          list.forEach(d => {
+            const opt = document.createElement("option");
+            opt.value = d.id;
+            opt.textContent = `${d.name}`;
+            sel.appendChild(opt);
+          });
+        }
+      }catch(e){ console.log("Standalone mode"); }
+    }
+
+    $("#btnLoadServer").onclick = async ()=>{
+      const val = $("#datasetSelect").value;
+      if(val === "demo"){
+        questions = demo;
+        idx = 0;
+        records.clear();
+        showTruth = false;
+        loadCurrent();
+        return;
+      }
+      
+      const btn = $("#btnLoadServer");
+      btn.textContent = "…";
+      try{
+        const res = await fetch(`/api/load?id=${encodeURIComponent(val)}`);
+        if(!res.ok) throw new Error("Server Error");
+        questions = await res.json();
+        idx = 0;
+        records.clear();
+        showTruth = false;
+        loadCurrent();
+      }catch(e){ alert(e.message); }
+      finally{ btn.textContent = "载入题库"; }
+    };
+
+    $("#btnClearAns").onclick = ()=>{
+      $("#studentAns").value = "";
+      setBadge("idle");
+      $("#scoreInput").value = 0;
+    };
+
+    $("#btnJudge").onclick = async ()=>{
+      if(!questions.length) return alert("请先载入题目（示例或导入 JSON）。");
+      const q = questions[idx];
+      const ans = $("#studentAns").value;
+      if(!ans.trim()) return alert("请输入学生答案。");
+
+      // Check if AI mode is on
+      const useAI = $("#useAI").checked;
+      
+      if(useAI) {
+        // AI Grading
+        const btn = $("#btnJudge");
+        const originalText = btn.textContent;
+        btn.textContent = "AI 思考中...";
+        btn.disabled = true;
+        
+        try {
+          const res = await fetch("http://localhost:8080/api/agent/grade", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({
+              questionText: q.text,
+              standardAnswer: q.truth,
+              studentAnswer: ans,
+              maxScore: String(q.maxScore ?? 1)
+            })
+          });
+          
+          if(!res.ok) throw new Error("Java Agent Error: " + res.status);
+          
+          const result = await res.json();
+          // Apply AI result
+          setBadge(result.correct ? "ok" : "bad");
+          $("#scoreInput").value = result.score;
+          $("#noteBox").value = (result.reason || "") + "\n(AI 判卷)";
+          
+        } catch(e) {
+          alert("AI 请求失败，请检查 Java 后端是否启动。\n" + e.message);
+          // Fallback to local
+          const ok = eqAnswer(ans, q.truth);
+          setBadge(ok ? "ok":"bad");
+          $("#scoreInput").value = ok ? Number(q.maxScore??1) : 0;
+        } finally {
+          btn.textContent = originalText;
+          btn.disabled = false;
+        }
+      } else {
+        // Local Grading (Existing Logic)
+        const ok = eqAnswer(ans, q.truth);
+        setBadge(ok ? "ok":"bad");
+        const maxS = Number($("#maxScoreInput").value || (q.maxScore ?? 1));
+        $("#scoreInput").value = ok ? maxS : 0;
+      }
+    };
+
+    $("#btnSave").onclick = ()=>{
+      if(!questions.length) return;
+      const q = questions[idx];
+      const studentAns = $("#studentAns").value;
+      const maxScore = Number($("#maxScoreInput").value || (q.maxScore ?? 1));
+      const score = Number($("#scoreInput").value || 0);
+      const note = $("#noteBox").value;
+
+      // 用当前 badge 判断是否正确（也可以重新算一遍）
+      const isCorrect = eqAnswer(studentAns, q.truth) && score > 0;
+
+      records.set(q.id, {
+        studentAns, isCorrect,
+        score: Math.max(0, Math.min(score, maxScore)),
+        maxScore, note,
+        judgedAt: new Date().toISOString()
+      });
+
+      loadCurrent();
+    };
+
+    $("#btnResetThis").onclick = ()=>{
+      if(!questions.length) return;
+      const q = questions[idx];
+      records.delete(q.id);
+      loadCurrent();
+    };
+
+    $("#btnExport").onclick = ()=>{
+      const payload = {
+        exportedAt: new Date().toISOString(),
+        totalQuestions: questions.length,
+        totalScore: sumScore(),
+        records: Array.from(records.entries()).map(([id, r])=>({ id, ...r })),
+      };
+      const blob = new Blob([JSON.stringify(payload, null, 2)], {type:"application/json"});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "grading_results.json";
+      a.click();
+      URL.revokeObjectURL(url);
+    };
+
+    // import JSON: must be array of questions
+    $("#fileInput").addEventListener("change", async (e)=>{
+      const file = e.target.files?.[0];
+      if(!file) return;
+      const text = await file.text();
+      try{
+        const data = JSON.parse(text);
+        if(!Array.isArray(data)) throw new Error("JSON 顶层必须是数组");
+        // minimal validation
+        questions = data.map((x, i)=>({
+          id: x.id ?? `Q${String(i+1).padStart(3,"0")}`,
+          text: x.text ?? "",
+          truth: x.truth ?? "",
+          meta: x.meta ?? "",
+          maxScore: x.maxScore ?? 1
+        }));
+        idx = 0;
+        records.clear();
+        showTruth = false;
+        loadCurrent();
+      }catch(err){
+        alert("导入失败：" + err.message);
+      }finally{
+        e.target.value = "";
+      }
+    });
+
+    // init empty
+    loadCurrent();
+    initDatasets();
+  </script>
+</body>
+</html>
