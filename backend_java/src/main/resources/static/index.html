@@ -414,15 +414,37 @@
         if(res.ok){
           const list = await res.json();
           const sel = $("#datasetSelect");
-          sel.innerHTML = `<option value="demo">示例题目 (Demo)</option>`;
+          // Clear and rebuild options
+          sel.innerHTML = "";
+          
+          // Option 1: Demo
+          const demoOpt = document.createElement("option");
+          demoOpt.value = "demo";
+          demoOpt.textContent = "示例题目 (Demo)";
+          sel.appendChild(demoOpt);
+
+          // Option 2: Server files
           list.forEach(d => {
             const opt = document.createElement("option");
             opt.value = d.id;
-            opt.textContent = `${d.name}`;
+            opt.textContent = `${d.name} (${d.group})`;
             sel.appendChild(opt);
           });
+          
+          // Auto-select first real dataset if available
+          if(list.length > 0){
+             sel.value = list[0].id;
+             // Optional: auto-load it? 
+             // $("#btnLoadServer").click(); // Maybe too aggressive
+             console.log("Auto-selected:", list[0].id);
+          }
         }
-      }catch(e){ console.log("Standalone mode"); }
+      }catch(e){ 
+        console.log("Standalone mode or API failed", e);
+        const sel = $("#datasetSelect");
+        sel.innerHTML = `<option value="demo">⚠️ 离线模式 (仅Demo)</option>`;
+        alert("提示：请运行 python app.py 来加载 data 文件夹中的题目。\n当前处于离线/文件预览模式，只能看到示例题目。");
+      }
     }
 
     $("#btnLoadServer").onclick = async ()=>{
@@ -437,17 +459,28 @@
       }
       
       const btn = $("#btnLoadServer");
-      btn.textContent = "…";
+      const originalText = btn.textContent;
+      btn.textContent = "Loading…";
+      btn.disabled = true;
       try{
         const res = await fetch(`/api/load?id=${encodeURIComponent(val)}`);
-        if(!res.ok) throw new Error("Server Error");
-        questions = await res.json();
+        if(!res.ok) throw new Error("Server Error: " + res.status);
+        
+        const data = await res.json();
+        if(!Array.isArray(data)) throw new Error("Format Error: Server returned non-array");
+        
+        questions = data;
         idx = 0;
         records.clear();
         showTruth = false;
         loadCurrent();
-      }catch(e){ alert(e.message); }
-      finally{ btn.textContent = "载入题库"; }
+        alert(`成功载入 ${questions.length} 道题目！`);
+      }catch(e){ 
+        alert("载入失败: " + e.message); 
+      }finally{ 
+        btn.textContent = originalText;
+        btn.disabled = false;
+      }
     };
 
     $("#btnClearAns").onclick = ()=>{
@@ -473,14 +506,17 @@
         btn.disabled = true;
         
         try {
-          const res = await fetch("http://localhost:8080/api/agent/grade", {
+          // Point to Java Backend (now serving on 8080 or same origin if served by Java)
+          // Since we moved this HTML to Java static, relative path works!
+          const res = await fetch("/api/agent/grade", {
             method: "POST",
             headers: {"Content-Type": "application/json"},
             body: JSON.stringify({
               questionText: q.text,
               standardAnswer: q.truth,
               studentAnswer: ans,
-              maxScore: String(q.maxScore ?? 1)
+              maxScore: String(q.maxScore ?? 1),
+              mode: "review" // Enable Peer Review Mode by default? Or toggle
             })
           });
           
@@ -510,6 +546,10 @@
         $("#scoreInput").value = ok ? maxS : 0;
       }
     };
+    
+    // Auto-save settings
+    $("#useAI").checked = localStorage.getItem("useAI") === "true";
+    $("#useAI").onchange = (e) => localStorage.setItem("useAI", e.target.checked);
 
     $("#btnSave").onclick = ()=>{
       if(!questions.length) return;
