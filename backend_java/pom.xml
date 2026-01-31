@@ -23,18 +23,10 @@
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
 
-        <!-- LangChain4j for OpenAI (compatible with DeepSeek/Qwen) -->
+        <!-- HTTP Client for calling Python -->
         <dependency>
-            <groupId>dev.langchain4j</groupId>
-            <artifactId>langchain4j-open-ai-spring-boot-starter</artifactId>
-            <version>${langchain4j.version}</version>
-        </dependency>
-
-        <!-- LangChain4j Core (for AiServices) -->
-        <dependency>
-            <groupId>dev.langchain4j</groupId>
-            <artifactId>langchain4j</artifactId>
-            <version>${langchain4j.version}</version>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-webflux</artifactId>
         </dependency>
 
         <dependency>

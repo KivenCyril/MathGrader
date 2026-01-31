@@ -1,0 +1,15 @@
+models:
+  deepseek:
+    api_key: "sk-your-deepseek-key"
+    base_url: "https://api.deepseek.com/v1"
+    model_name: "deepseek-chat"
+  
+  qwen:
+    api_key: "sk-your-qwen-key"
+    base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    model_name: "qwen-turbo"
+
+# Default role assignments
+roles:
+  grader: "deepseek"   # Default model for single grading or primary grader
+  reviewer: "qwen"     # Default model for peer review
