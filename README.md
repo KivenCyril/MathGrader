@@ -12,11 +12,11 @@ MathGrader 是一个前后端分离的智能教育辅助工具，旨在通过多
 
 ```mermaid
 graph LR
-    User((User)) -->|Browser| Java[☕ Java Backend\n(Spring Boot :8080)]
-    Java -->|Load Data| FS[📂 JSON Datasets]
-    Java -->|Bridge Request| Python[🐍 Python Agent\n(Flask :5000)]
-    Python -->|Strategy: Single| LLM1[🤖 DeepSeek\n(Grader)]
-    Python -->|Strategy: Review| LLM2[👮 Qwen\n(Reviewer)]
+    User((User)) -->|Browser| Java["☕ Java Backend\n(Spring Boot :8080)"]
+    Java -->|Load Data| FS["📂 JSON Datasets"]
+    Java -->|Bridge Request| Python["🐍 Python Agent\n(Flask :5000)"]
+    Python -->|Strategy: Single| LLM1["🤖 DeepSeek\n(Grader)"]
+    Python -->|Strategy: Review| LLM2["👮 Qwen\n(Reviewer)"]
     LLM1 --> Python
     LLM2 --> Python
     Python --> Java
