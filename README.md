@@ -48,9 +48,9 @@ graph LR
 
 2.  **🤖 智能判卷 (AI Grading)**
     - **单模模式 (Single Pass)**: 快速判断对错，提取分数，生成简短评语。
-    - **互评模式 (Peer Review)**:
-        - 🕵️ **初审 (Grader)**: 由主模型（如 DeepSeek）进行初步打分。
-        - 👮 **复核 (Reviewer)**: 由第二模型（如 Qwen）检查初审结果的公允性，输出最终裁决。
+    - **互评实验模式 (Peer Review)**:
+        - 🕵️ **初审 (Grader)**: 由主模型（如 DeepSeek）进行答题。
+        - 👮 **复核 (Reviewer)**: 由第二模型（如 Qwen）检查主模型答题质量进行实验评判。
 
 3.  **⚙️ 高度可配置**
     - 通过 `settings.yaml` 热更新模型配置（API Key, Base URL）。
