@@ -1,7 +1,10 @@
 package com.mathgrader.service;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Service;
 
+import java.io.BufferedReader;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -15,8 +18,8 @@ import java.util.stream.Stream;
 @Service
 public class FileService {
 
-    // Hardcoded path for now, should be config
     private final Path DATA_ROOT = Paths.get("../data/raw"); 
+    private final ObjectMapper mapper = new ObjectMapper();
 
     public List<Map<String, String>> listDatasets() {
         List<Map<String, String>> datasets = new ArrayList<>();
@@ -27,7 +30,6 @@ public class FileService {
                  .filter(p -> p.toString().endsWith(".json"))
                  .forEach(p -> {
                      Map<String, String> map = new HashMap<>();
-                     // Create relative ID
                      String rel = DATA_ROOT.relativize(p).toString().replace("\\", "/");
                      map.put("id", rel);
                      map.put("name", p.getFileName().toString());
@@ -40,20 +42,42 @@ public class FileService {
         return datasets;
     }
 
-    public String loadDataset(String id) throws IOException {
+    public List<Map<String, Object>> loadAndParse(String id) throws IOException {
         Path file = DATA_ROOT.resolve(id);
-        if (!Files.exists(file)) {
-            throw new IOException("File not found: " + id);
+        if (!Files.exists(file)) throw new IOException("File not found: " + id);
+
+        // Try 1: Read as full JSON array
+        try {
+            return mapper.readValue(file.toFile(), new TypeReference<List<Map<String, Object>>>(){});
+        } catch (Exception e) {
+            // Try 2: JSONL (Line-by-line)
+            List<Map<String, Object>> result = new ArrayList<>();
+            try (BufferedReader reader = Files.newBufferedReader(file)) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    line = line.trim();
+                    if (line.isEmpty()) continue;
+                    try {
+                        Map<String, Object> obj = mapper.readValue(line, new TypeReference<Map<String, Object>>(){});
+                        result.add(obj);
+                    } catch (Exception ignored) {
+                        // Skip bad lines
+                    }
+                }
+            }
+            if (result.isEmpty()) {
+                // If both failed, maybe it's the "consecutive objects" format without newlines?
+                // Try reading full content and fixing it
+                String content = Files.readString(file).trim();
+                // Naive fix: } { -> }, {
+                content = "[" + content.replace("}{", "},{").replace("}\n{", "},{") + "]";
+                try {
+                    return mapper.readValue(content, new TypeReference<List<Map<String, Object>>>(){});
+                } catch (Exception ex) {
+                    throw new IOException("Failed to parse dataset. Tried Array, JSONL, and Naive Fix.");
+                }
+            }
+            return result;
         }
-        // Just read raw content for now, parsing logic is duplicated from Python's math23k.py?
-        // Actually, Python's loader logic was a bit complex (fixing json).
-        // Let's implement a simple fixer here similar to Python's load_math23k
-        
-        String content = Files.readString(file);
-        // Fix {..}{..} -> [{..},{..}] if needed
-        if (!content.trim().startsWith("[")) {
-             content = "[" + content.replace("}\n{", "},{") + "]";
-        }
-        return content;
     }
 }

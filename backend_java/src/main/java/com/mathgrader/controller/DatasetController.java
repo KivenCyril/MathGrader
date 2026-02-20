@@ -29,19 +29,25 @@ public class DatasetController {
     @GetMapping("/load")
     public List<Map<String, Object>> load(@RequestParam String id) {
         try {
-            String json = fileService.loadDataset(id);
-            // Parse raw json
-            List<Map<String, Object>> raw = mapper.readValue(json, new TypeReference<List<Map<String, Object>>>(){});
+            List<Map<String, Object>> raw = fileService.loadAndParse(id);
             
             // Transform to frontend format
             List<Map<String, Object>> result = new ArrayList<>();
             for (int i = 0; i < raw.size(); i++) {
                 Map<String, Object> item = raw.get(i);
+                
+                String qText = findField(item, "original_text", "text", "question", "problem", "body");
+                String qTruth = findField(item, "ans", "answer", "truth", "correct_answer", "solution");
+                String qId = findField(item, "id", "problem_id", "_id");
+                if (qId.isEmpty()) qId = String.valueOf(i + 1);
+                
+                String eq = findField(item, "equation", "formula");
+                
                 Map<String, Object> q = Map.of(
-                    "id", item.getOrDefault("id", String.valueOf(i)),
-                    "text", item.getOrDefault("original_text", item.getOrDefault("text", "")),
-                    "truth", item.getOrDefault("ans", item.getOrDefault("answer", "")),
-                    "meta", "Math23K (Eq: " + item.getOrDefault("equation", "") + ")",
+                    "id", qId,
+                    "text", qText,
+                    "truth", qTruth,
+                    "meta", eq.isEmpty() ? "Unknown Source" : "Equation: " + eq,
                     "maxScore", 1
                 );
                 result.add(q);
@@ -50,5 +56,18 @@ public class DatasetController {
         } catch (Exception e) {
             throw new RuntimeException("Load failed: " + e.getMessage());
         }
+    }
+    
+    private String findField(Map<String, Object> item, String... keys) {
+        for (String key : keys) {
+            if (item.containsKey(key)) return String.valueOf(item.get(key));
+        }
+        // Fallback: Case insensitive search
+        for (String key : item.keySet()) {
+            for (String target : keys) {
+                if (key.equalsIgnoreCase(target)) return String.valueOf(item.get(key));
+            }
+        }
+        return "";
     }
 }

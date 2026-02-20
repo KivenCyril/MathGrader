@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="zh-Hans">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Math Grader - Admin Console</title>
+  <!-- Vue 3 (CDN) -->
+  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+  <!-- FontAwesome -->
+  <link rel="stylesheet" href="https://cdn.bootcdn.net/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- Tailwind CSS (CDN for rapid styling) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { background-color: #f1f5f9; font-family: system-ui, -apple-system, sans-serif; }
+    .scroll-custom::-webkit-scrollbar { width: 6px; }
+    .scroll-custom::-webkit-scrollbar-track { background: transparent; }
+    .scroll-custom::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 3px; }
+    [v-cloak] { display: none; }
+  </style>
+</head>
+<body>
+
+<div id="app" v-cloak class="h-screen flex flex-col overflow-hidden">
+  
+  <!-- Header -->
+  <header class="bg-white border-b border-slate-200 px-6 py-3 flex justify-between items-center shadow-sm z-10">
+    <div class="flex items-center gap-3">
+      <div class="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center text-white">
+        <i class="fa-solid fa-screwdriver-wrench"></i>
+      </div>
+      <div>
+        <h1 class="text-lg font-bold text-slate-800">Admin Console</h1>
+        <p class="text-xs text-slate-500">双模型互评调试台</p>
+      </div>
+    </div>
+    <div class="flex gap-3">
+      <button @click="loadDatasets" class="px-3 py-1.5 text-sm bg-slate-100 hover:bg-slate-200 rounded text-slate-600">
+        <i class="fa-solid fa-rotate"></i> 刷新题库
+      </button>
+      <button @click="switchRole" class="px-3 py-1.5 text-sm border border-slate-300 hover:bg-slate-50 rounded text-slate-600">
+        <i class="fa-solid fa-arrow-right-from-bracket"></i> 切换身份
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="flex-1 flex overflow-hidden">
+    
+    <!-- Left: Question List -->
+    <aside class="w-72 bg-white border-r border-slate-200 flex flex-col">
+      <div class="p-3 border-b border-slate-100 bg-slate-50">
+        <select v-model="currentDatasetId" @change="loadQuestions" class="w-full text-sm border-slate-300 rounded p-1.5">
+          <option value="demo">示例题目 (Demo)</option>
+          <option v-for="d in datasets" :key="d.id" :value="d.id">{{ d.name }}</option>
+        </select>
+      </div>
+      <div class="flex-1 overflow-y-auto scroll-custom p-2 space-y-2">
+        <div 
+          v-for="(q, idx) in questions" 
+          :key="q.id"
+          @click="selectQuestion(idx)"
+          :class="['p-3 rounded-lg border cursor-pointer transition-all text-sm', 
+            currentIndex === idx ? 'bg-indigo-50 border-indigo-200 shadow-sm' : 'bg-white border-slate-100 hover:bg-slate-50']"
+        >
+          <div class="flex justify-between items-start mb-1">
+            <span class="font-bold text-slate-700">{{ q.id }}</span>
+            <span v-if="records[q.id]" :class="records[q.id].correct ? 'text-green-600 bg-green-50' : 'text-red-600 bg-red-50'" class="px-1.5 py-0.5 text-xs rounded">
+              {{ records[q.id].correct ? 'OK' : 'ERR' }}
+            </span>
+          </div>
+          <div class="text-slate-500 line-clamp-2 text-xs">{{ q.text }}</div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Center: Solver Panel (Model A) -->
+    <section class="flex-1 flex flex-col border-r border-slate-200 bg-slate-50/50">
+      <div class="p-4 border-b border-slate-200 bg-white flex justify-between items-center">
+        <div class="flex flex-col gap-1">
+          <h2 class="font-semibold text-slate-700 flex items-center gap-2">
+            <i class="fa-solid fa-user-graduate text-indigo-500"></i> 模型 A (Solver)
+          </h2>
+          <span class="text-xs px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded-full font-mono w-fit">Role: Student</span>
+        </div>
+        <select v-model="selectedSolver" class="text-xs border border-slate-300 rounded px-2 py-1 bg-white text-slate-600 outline-none focus:border-indigo-500">
+          <option value="">Default (Reviewer)</option>
+          <option v-for="m in availableModels" :value="m">{{ m }}</option>
+        </select>
+      </div>
+      
+      <div class="flex-1 p-6 overflow-y-auto scroll-custom">
+        <!-- Question Card -->
+        <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200 mb-6">
+          <div class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">题目 Question</div>
+          <div class="text-slate-800 text-lg leading-relaxed font-medium">{{ currentQuestion.text || '请选择一道题目...' }}</div>
+          <div class="mt-4 pt-4 border-t border-slate-100 flex gap-4 text-sm text-slate-500">
+            <div><span class="font-semibold">ID:</span> {{ currentQuestion.id }}</div>
+            <div><span class="font-semibold">Meta:</span> {{ currentQuestion.meta || '-' }}</div>
+            <div><span class="font-semibold">Max Score:</span> {{ currentQuestion.maxScore || 1 }}</div>
+          </div>
+        </div>
+
+        <!-- Solver Output -->
+        <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200 relative group">
+          <div class="flex justify-between items-center mb-3">
+            <div class="text-xs font-bold text-slate-400 uppercase tracking-wider">生成的答案 Generated Answer</div>
+            <button @click="copyAnswer" class="text-xs text-indigo-500 hover:text-indigo-700 opacity-0 group-hover:opacity-100 transition">
+              <i class="fa-regular fa-copy"></i> 复制
+            </button>
+          </div>
+          
+          <textarea 
+            v-model="studentAnswer" 
+            class="w-full h-40 p-3 bg-slate-50 border border-slate-200 rounded-lg text-slate-700 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition font-mono text-sm"
+            placeholder="等待生成或手动输入..."
+          ></textarea>
+
+          <div class="mt-4 flex gap-3">
+            <button 
+              @click="runSolver" 
+              :disabled="!currentQuestion.id || isSolving"
+              class="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white rounded-lg font-medium transition shadow-sm flex items-center justify-center gap-2"
+            >
+              <i v-if="isSolving" class="fa-solid fa-circle-notch fa-spin"></i>
+              <span v-else><i class="fa-solid fa-wand-magic-sparkles"></i> 生成答案 (Solve)</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Right: Grader Panel (Model B) -->
+    <section class="flex-1 flex flex-col bg-white">
+      <div class="p-4 border-b border-slate-200 flex justify-between items-center">
+        <div class="flex flex-col gap-1">
+          <h2 class="font-semibold text-slate-700 flex items-center gap-2">
+            <i class="fa-solid fa-chalkboard-user text-emerald-500"></i> 模型 B (Grader)
+          </h2>
+          <span class="text-xs px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-full font-mono w-fit">Role: Teacher</span>
+        </div>
+        <select v-model="selectedGrader" class="text-xs border border-slate-300 rounded px-2 py-1 bg-white text-slate-600 outline-none focus:border-emerald-500">
+          <option value="">Default (Grader)</option>
+          <option v-for="m in availableModels" :value="m">{{ m }}</option>
+        </select>
+      </div>
+
+      <div class="flex-1 p-6 overflow-y-auto scroll-custom">
+        <!-- Truth -->
+        <div class="mb-6 p-4 bg-emerald-50/50 border border-emerald-100 rounded-lg">
+          <div class="flex justify-between items-center mb-1">
+            <div class="text-xs font-bold text-emerald-600/70 uppercase">标准答案 Truth</div>
+            <button @click="showTruth = !showTruth" class="text-xs text-emerald-600 hover:underline">
+              {{ showTruth ? '隐藏' : '显示' }}
+            </button>
+          </div>
+          <div class="font-mono text-emerald-800 font-medium">
+            {{ showTruth ? currentQuestion.truth : '***' }}
+          </div>
+        </div>
+
+        <!-- Grading Result -->
+        <div v-if="gradingResult" class="animate-fade-in">
+          <div :class="['p-4 rounded-lg border mb-4 flex items-center gap-3', 
+            gradingResult.correct ? 'bg-green-50 border-green-200 text-green-800' : 'bg-red-50 border-red-200 text-red-800']">
+            <i :class="['text-2xl fa-solid', gradingResult.correct ? 'fa-circle-check' : 'fa-circle-xmark']"></i>
+            <div>
+              <div class="font-bold text-lg">{{ gradingResult.correct ? '正确 Correct' : '错误 Incorrect' }}</div>
+              <div class="text-sm opacity-80">得分: {{ gradingResult.score }} / {{ currentQuestion.maxScore || 1 }}</div>
+            </div>
+          </div>
+
+          <div class="bg-slate-50 border border-slate-200 rounded-lg p-4">
+            <div class="text-xs font-bold text-slate-400 uppercase mb-2">判卷评语 Feedback</div>
+            <div class="text-slate-700 text-sm whitespace-pre-wrap">{{ gradingResult.reason }}</div>
+            
+            <div v-if="gradingResult.details" class="mt-4 pt-4 border-t border-slate-200">
+               <details class="text-xs text-slate-500">
+                 <summary class="cursor-pointer hover:text-slate-700">查看原始 JSON</summary>
+                 <pre class="mt-2 p-2 bg-slate-100 rounded overflow-x-auto">{{ JSON.stringify(gradingResult, null, 2) }}</pre>
+               </details>
+            </div>
+          </div>
+        </div>
+
+        <div v-else class="h-40 flex flex-col items-center justify-center text-slate-300 border-2 border-dashed border-slate-100 rounded-lg">
+          <i class="fa-solid fa-clipboard-check text-3xl mb-2"></i>
+          <span class="text-sm">等待判卷...</span>
+        </div>
+      </div>
+
+      <div class="p-4 border-t border-slate-200 bg-slate-50">
+        <button 
+          @click="runGrader" 
+          :disabled="!studentAnswer || isGrading"
+          class="w-full py-3 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white rounded-lg font-medium transition shadow-sm flex items-center justify-center gap-2"
+        >
+          <i v-if="isGrading" class="fa-solid fa-circle-notch fa-spin"></i>
+          <span v-else><i class="fa-solid fa-gavel"></i> 提交判卷 (Grade)</span>
+        </button>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<script>
+  const { createApp } = Vue;
+
+  createApp({
+    data() {
+      return {
+        datasets: [],
+        questions: [],
+        availableModels: [],
+        selectedSolver: '',
+        selectedGrader: '',
+        currentIndex: -1,
+        currentDatasetId: 'demo',
+        
+        // State
+        studentAnswer: '',
+        showTruth: false,
+        isSolving: false,
+        isGrading: false,
+        
+        gradingResult: null,
+        records: {} // Local tracking
+      }
+    },
+    computed: {
+      currentQuestion() {
+        return this.currentIndex >= 0 ? this.questions[this.currentIndex] : {};
+      }
+    },
+    mounted() {
+      this.initDatasets();
+      this.initModels();
+      // Load demo initially
+      this.loadQuestions();
+    },
+    methods: {
+      async initModels() {
+        try {
+          const res = await fetch('/api/agent/models');
+          if (res.ok) this.availableModels = await res.json();
+        } catch (e) {}
+      },
+      async initDatasets() {
+        try {
+          const res = await fetch('/api/datasets');
+          if (res.ok) this.datasets = await res.json();
+        } catch (e) { console.error(e); }
+      },
+      
+      async loadQuestions() {
+        if (this.currentDatasetId === 'demo') {
+          // Hardcoded demo for fallback
+          this.questions = [
+            { id:"Q001", meta:"G4 Demo", text:"小明买了4袋苹果，每袋6个，一共有多少个苹果？", truth:"24", maxScore:1 },
+            { id:"Q002", meta:"G5 Demo", text:"一辆车每小时行驶60千米，2.5小时行驶多少千米？", truth:"150", maxScore:1 }
+          ];
+        } else {
+          try {
+            const res = await fetch(`/api/load?id=${this.currentDatasetId}`);
+            if (res.ok) this.questions = await res.json();
+          } catch (e) { alert('Load failed'); }
+        }
+        this.selectQuestion(0);
+      },
+
+      selectQuestion(idx) {
+        if (!this.questions.length) return;
+        this.currentIndex = idx;
+        this.studentAnswer = '';
+        this.gradingResult = null;
+        this.showTruth = false;
+        
+        // Restore local record if exists
+        const qId = this.questions[idx].id;
+        if (this.records[qId]) {
+          this.studentAnswer = this.records[qId].studentAnswer;
+          this.gradingResult = this.records[qId].result;
+        }
+      },
+
+      async runSolver() {
+        if (!this.currentQuestion.text) return;
+        this.isSolving = true;
+        this.studentAnswer = ''; // Clear prev
+        try {
+          const res = await fetch('/api/agent/solve', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ 
+              questionText: this.currentQuestion.text,
+              model: this.selectedSolver
+            })
+          });
+          const data = await res.json();
+          if (data.answer) {
+            this.studentAnswer = data.answer;
+          } else {
+            alert('Error: ' + JSON.stringify(data));
+          }
+        } catch (e) {
+          alert('Request failed: ' + e.message);
+        } finally {
+          this.isSolving = false;
+        }
+      },
+
+      async runGrader() {
+        if (!this.studentAnswer) return;
+        this.isGrading = true;
+        try {
+          const res = await fetch('/api/agent/grade', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+              questionText: this.currentQuestion.text,
+              standardAnswer: this.currentQuestion.truth,
+              studentAnswer: this.studentAnswer,
+              maxScore: this.currentQuestion.maxScore || 1,
+              mode: 'review', // Force peer review mode for admin
+              model: this.selectedGrader
+            })
+          });
+          const result = await res.json();
+          this.gradingResult = result;
+          
+          // Save local record
+          this.records[this.currentQuestion.id] = {
+            studentAnswer: this.studentAnswer,
+            correct: result.correct,
+            result: result
+          };
+          
+        } catch (e) {
+          alert('Grading failed: ' + e.message);
+        } finally {
+          this.isGrading = false;
+        }
+      },
+      
+      copyAnswer() {
+        navigator.clipboard.writeText(this.studentAnswer);
+      },
+      switchRole() {
+        localStorage.removeItem('math_grader_role');
+        window.location.href = '/';
+      }
+    }
+  }).mount('#app');
+</script>
+</body>
+</html>

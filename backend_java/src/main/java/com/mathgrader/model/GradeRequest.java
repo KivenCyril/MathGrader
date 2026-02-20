@@ -9,4 +9,5 @@ public class GradeRequest {
     private String studentAnswer;
     private String maxScore;
     private String mode; // "single" or "review"
+    private String model; // e.g. "qwen", "deepseek"
 }

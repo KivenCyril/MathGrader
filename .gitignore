@@ -35,3 +35,6 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Local secrets
+settings.yaml
