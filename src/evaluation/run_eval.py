@@ -10,13 +10,61 @@ from concurrent.futures import ThreadPoolExecutor
 API_BASE = "http://localhost:5000"
 
 def load_dataset(path):
-    with open(path, 'r', encoding='utf-8') as f:
-        return json.load(f)
+    try:
+        # Try standard JSON load first
+        with open(path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except json.JSONDecodeError:
+        # If failed, try to handle concatenated JSON objects (like math23k format)
+        print("Warning: Standard JSON load failed, trying concatenated JSON fix...")
+        data = []
+        with open(path, 'r', encoding='utf-8') as f:
+            content = f.read()
+            decoder = json.JSONDecoder()
+            idx = 0
+            while idx < len(content):
+                try:
+                    # Skip whitespace
+                    while idx < len(content) and content[idx].isspace():
+                        idx += 1
+                    if idx >= len(content):
+                        break
+                        
+                    obj, end_idx = decoder.raw_decode(content, idx=idx)
+                    data.append(obj)
+                    idx = end_idx
+                except json.JSONDecodeError:
+                    # Try to skip bad chars and continue
+                    idx += 1
+        return data
+
+def normalize_question(q):
+    """
+    Normalize dataset fields to 'text' and 'truth'
+    """
+    # math23k format
+    if "original_text" in q and "ans" in q:
+        q["text"] = q["original_text"]
+        q["truth"] = q["ans"]
+    # ape210k format (often uses 'original_text' and 'ans' too, or similar)
+    # primary_math.json format (uses 'text' and 'truth' or 'answer')
+    
+    # Fallback if text is missing but 'question' exists
+    if "text" not in q and "question" in q:
+        q["text"] = q["question"]
+    
+    # Fallback if truth is missing but 'answer' exists
+    if "truth" not in q and "answer" in q:
+        q["truth"] = q["answer"]
+        
+    return q
 
 def run_single_case(q, solver_model, grader_model, enable_tools):
     """
     Run Solve -> Grade pipeline for a single question
     """
+    q = normalize_question(q)
+    
     start_time = time.time()
     result = {
         "id": q.get("id"),

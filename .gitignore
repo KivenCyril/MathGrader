@@ -38,3 +38,10 @@ Thumbs.db
 
 # Local secrets
 settings.yaml
+
+# Datasets
+data/
+
+# Evaluation Results
+results/
+

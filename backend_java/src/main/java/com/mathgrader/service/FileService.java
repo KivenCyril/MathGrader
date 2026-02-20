@@ -1,6 +1,7 @@
 package com.mathgrader.service;
 
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.MappingIterator;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Service;
 
@@ -18,19 +19,49 @@ import java.util.stream.Stream;
 @Service
 public class FileService {
 
-    private final Path DATA_ROOT = Paths.get("../data/raw"); 
+    // Use absolute path to avoid CWD issues
+    // Assuming the structure is fixed relative to backend_java or project root
+    // But since we are running from backend_java folder (via mvn), ".." goes to project root.
+    // However, let's try to be more robust by checking if "../data/raw" exists, if not try "data/raw" (if running from root)
+    private Path getDataRoot() {
+        Path p1 = Paths.get("../data/raw");
+        if (Files.exists(p1)) return p1;
+        Path p2 = Paths.get("data/raw");
+        if (Files.exists(p2)) return p2;
+        // Absolute fallback for dev environment
+        return Paths.get("E:/test/Pywork/math_grader/data/raw");
+    }
+
     private final ObjectMapper mapper = new ObjectMapper();
 
     public List<Map<String, String>> listDatasets() {
+        Path root = getDataRoot();
         List<Map<String, String>> datasets = new ArrayList<>();
-        if (!Files.exists(DATA_ROOT)) return datasets;
+        if (!Files.exists(root)) {
+            System.err.println("Data root not found: " + root.toAbsolutePath());
+            return datasets;
+        }
 
-        try (Stream<Path> paths = Files.walk(DATA_ROOT)) {
+        try (Stream<Path> paths = Files.walk(root)) {
             paths.filter(Files::isRegularFile)
-                 .filter(p -> p.toString().endsWith(".json"))
+                 .filter(p -> p.toString().endsWith(".json") || p.toString().endsWith(".jsonl"))
+                 .filter(p -> {
+                     // Exclude files with keywords like 'common', 'shot' in filename (case insensitive)
+                     // Also exclude files in 'evaluation' or 'results' directories
+                     String pathStr = p.toString().toLowerCase();
+                     String fileName = p.getFileName().toString().toLowerCase();
+                     
+                     // 1. Exclude directory names
+                     if (pathStr.contains("evaluation") || pathStr.contains("results") || pathStr.contains("images")) return false;
+                     
+                     // 2. Exclude filename patterns (e.g. shot, common, result) which are likely intermediate files or prompts
+                     if (fileName.contains("shot") || fileName.contains("common") || fileName.contains("result")) return false;
+                     
+                     return true;
+                 })
                  .forEach(p -> {
                      Map<String, String> map = new HashMap<>();
-                     String rel = DATA_ROOT.relativize(p).toString().replace("\\", "/");
+                     String rel = root.relativize(p).toString().replace("\\", "/");
                      map.put("id", rel);
                      map.put("name", p.getFileName().toString());
                      map.put("group", p.getParent().getFileName().toString());
@@ -43,41 +74,20 @@ public class FileService {
     }
 
     public List<Map<String, Object>> loadAndParse(String id) throws IOException {
-        Path file = DATA_ROOT.resolve(id);
+        Path root = getDataRoot();
+        Path file = root.resolve(id);
         if (!Files.exists(file)) throw new IOException("File not found: " + id);
 
-        // Try 1: Read as full JSON array
-        try {
-            return mapper.readValue(file.toFile(), new TypeReference<List<Map<String, Object>>>(){});
+        // Best approach: Use MappingIterator to read concatenated JSON objects
+        try (MappingIterator<Map<String, Object>> it = mapper.readerFor(Map.class).readValues(file.toFile())) {
+            return it.readAll();
         } catch (Exception e) {
-            // Try 2: JSONL (Line-by-line)
-            List<Map<String, Object>> result = new ArrayList<>();
-            try (BufferedReader reader = Files.newBufferedReader(file)) {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    line = line.trim();
-                    if (line.isEmpty()) continue;
-                    try {
-                        Map<String, Object> obj = mapper.readValue(line, new TypeReference<Map<String, Object>>(){});
-                        result.add(obj);
-                    } catch (Exception ignored) {
-                        // Skip bad lines
-                    }
-                }
+            // Fallback: Try reading as a standard JSON Array
+            try {
+                return mapper.readValue(file.toFile(), new TypeReference<List<Map<String, Object>>>(){});
+            } catch (Exception ex) {
+                 throw new IOException("Failed to parse dataset: " + e.getMessage() + " | " + ex.getMessage());
             }
-            if (result.isEmpty()) {
-                // If both failed, maybe it's the "consecutive objects" format without newlines?
-                // Try reading full content and fixing it
-                String content = Files.readString(file).trim();
-                // Naive fix: } { -> }, {
-                content = "[" + content.replace("}{", "},{").replace("}\n{", "},{") + "]";
-                try {
-                    return mapper.readValue(content, new TypeReference<List<Map<String, Object>>>(){});
-                } catch (Exception ex) {
-                    throw new IOException("Failed to parse dataset. Tried Array, JSONL, and Naive Fix.");
-                }
-            }
-            return result;
         }
     }
 }

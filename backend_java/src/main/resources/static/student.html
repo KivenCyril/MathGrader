@@ -5,63 +5,19 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>小学数学判卷小工具</title>
   <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+  <!-- MathJax for LaTeX Rendering -->
+  <script>
+    window.MathJax = {
+      tex: {
+        inlineMath: [['$', '$'], ['\\(', '\\)']],
+        displayMath: [['$$', '$$'], ['\\[', '\\]']]
+      },
+      svg: { fontCache: 'global' }
+    };
+  </script>
+  <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
   <link rel="stylesheet" href="https://cdn.bootcdn.net/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-  <style>
-    :root {
-      --bg: #f8fafc; --panel: #ffffff; --line: #e2e8f0;
-      --text-main: #1e293b; --text-sub: #64748b;
-      --primary: #4f46e5; --primary-hover: #4338ca; --primary-light: #e0e7ff;
-      --success: #10b981; --success-bg: #ecfdf5;
-      --danger: #ef4444; --danger-bg: #fef2f2;
-      --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
-      --radius: 12px;
-    }
-    * { box-sizing: border-box; outline: none; }
-    body { margin: 0; font-family: system-ui, -apple-system, sans-serif; color: var(--text-main); background: var(--bg); height: 100vh; display: flex; flex-direction: column; }
-    [v-cloak] { display: none; }
-    
-    .wrap { max-width: 1400px; margin: 0 auto; padding: 20px; width: 100%; flex: 1; display: flex; flex-direction: column; gap: 20px; }
-    
-    /* Topbar */
-    .topbar { display: flex; align-items: center; justify-content: space-between; padding: 16px 24px; background: var(--panel); border-radius: var(--radius); box-shadow: var(--shadow); gap: 16px; }
-    .logo-icon { width: 40px; height: 40px; background: linear-gradient(135deg, #6366f1, #4f46e5); border-radius: 10px; display: flex; align-items: center; justify-content: center; color: white; font-size: 20px; }
-    .stat-pill { background: var(--bg); border: 1px solid var(--line); padding: 6px 12px; border-radius: 20px; font-size: 13px; color: var(--text-sub); display: flex; align-items: center; gap: 6px; }
-    .stat-pill strong { color: var(--text-main); font-weight: 600; }
-    
-    /* Buttons */
-    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 8px 16px; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; border: 1px solid var(--line); background: white; color: var(--text-main); transition: all 0.2s; }
-    .btn:hover { background: #f1f5f9; }
-    .btn.primary { background: var(--primary); border-color: var(--primary); color: white; }
-    .btn.primary:hover { background: var(--primary-hover); }
-    .btn.icon-only { padding: 8px; width: 36px; height: 36px; border-radius: 50%; }
-    
-    /* Layout */
-    .main-grid { display: grid; grid-template-columns: 280px 1fr 340px; gap: 20px; flex: 1; min-height: 0; }
-    .card { background: var(--panel); border-radius: var(--radius); box-shadow: var(--shadow); border: 1px solid var(--line); display: flex; flex-direction: column; overflow: hidden; }
-    .card-header { padding: 16px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center; background: #fdfdfd; font-weight: 600; font-size: 15px; }
-    .card-body { padding: 16px; flex: 1; overflow-y: auto; }
-    
-    /* List */
-    .q-item { padding: 12px; border-radius: 8px; background: #f8fafc; cursor: pointer; margin-bottom: 8px; position: relative; border: 1px solid transparent; }
-    .q-item:hover { background: #f1f5f9; }
-    .q-item.active { background: white; border-color: var(--primary-light); box-shadow: 0 0 0 2px var(--primary-light); }
-    .q-item.active::before { content: ""; position: absolute; left: 0; top: 12px; bottom: 12px; width: 4px; background: var(--primary); border-radius: 0 4px 4px 0; }
-    .q-status { display: inline-block; font-size: 11px; padding: 2px 6px; border-radius: 4px; margin-top: 6px; background: #e2e8f0; color: var(--text-sub); }
-    .q-status.ok { background: var(--success-bg); color: var(--success); }
-    .q-status.bad { background: var(--danger-bg); color: var(--danger); }
-
-    /* Inputs */
-    .modern-input { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; font-size: 14px; transition: border-color 0.2s; background: #f8fafc; }
-    .modern-input:focus { border-color: var(--primary); background: #fff; }
-    
-    /* Switch */
-    .switch { position: relative; display: inline-block; width: 44px; height: 24px; }
-    .switch input { opacity: 0; width: 0; height: 0; }
-    .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; border-radius: 24px; }
-    .slider:before { position: absolute; content: ""; height: 18px; width: 18px; left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; }
-    input:checked + .slider { background-color: var(--primary); }
-    input:checked + .slider:before { transform: translateX(20px); }
-  </style>
+  <link rel="stylesheet" href="css/student.css">
 </head>
 <body>
 
@@ -83,10 +39,17 @@
       <button @click="switchRole" class="btn" title="切换身份">
         <i class="fa-solid fa-arrow-right-from-bracket"></i>
       </button>
-      <select v-model="datasetId" @change="loadDataset" class="btn">
+      <select v-model="datasetId" @change="onDatasetChange" class="btn">
         <option value="demo">示例题目</option>
         <option v-for="d in datasetList" :key="d.id" :value="d.id">{{ d.name }}</option>
       </select>
+      <select v-if="levels.length > 0" v-model="selectedLevel" @change="loadDataset" class="btn" style="max-width: 100px;">
+        <option value="">全部等级</option>
+        <option v-for="l in levels" :key="l" :value="l">{{ l }}</option>
+      </select>
+      <button @click="addCustomQuestion" class="btn primary">
+        <i class="fa-solid fa-camera"></i> 拍照/自定义
+      </button>
       <button @click="loadDataset" class="btn primary" :disabled="loading">
         <i :class="loading ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-cloud-arrow-down'"></i> 载入
       </button>
@@ -100,14 +63,19 @@
     <div class="card">
       <div class="card-header"><i class="fa-solid fa-list-ul"></i> 题目列表</div>
       <div class="card-body">
-        <div v-for="(q, i) in questions" :key="q.id" @click="select(i)" 
-             :class="['q-item', { active: idx === i }]">
+        <div v-for="(q, i) in displayQuestions" :key="q.id" @click="select(i + page * pageSize)" 
+             :class="['q-item', { active: idx === (i + page * pageSize) }]">
           <div style="font-weight:600; font-size:13px;">{{ q.id }}</div>
           <div style="font-size:12px; color:var(--text-sub); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ q.text }}</div>
           <span v-if="records[q.id]" :class="['q-status', records[q.id].isCorrect ? 'ok' : 'bad']">
             <i :class="records[q.id].isCorrect ? 'fa-solid fa-check' : 'fa-solid fa-xmark'"></i> {{ records[q.id].isCorrect ? '已判对' : '已判错' }}
           </span>
           <span v-else class="q-status">未判</span>
+        </div>
+        <div style="display:flex; justify-content:center; gap:10px; margin-top:10px;">
+             <button class="btn" @click="page--" :disabled="page <= 0">上一页</button>
+             <span style="display:flex; align-items:center; font-size:12px;">{{ page + 1 }} / {{ Math.ceil(questions.length / pageSize) }}</span>
+             <button class="btn" @click="page++" :disabled="(page + 1) * pageSize >= questions.length">下一页</button>
         </div>
       </div>
     </div>
@@ -116,23 +84,44 @@
     <div class="card">
       <div class="card-header">
         <span>当前题目 {{ currentQ.id }}</span>
-        <div>
+        <div style="display:flex; gap:8px;">
+          <button v-if="currentQ.isCustom" class="btn icon-only" @click="editingQ = !editingQ" :title="editingQ ? '预览' : '编辑'">
+            <i :class="editingQ ? 'fa-regular fa-eye' : 'fa-solid fa-pen-to-square'"></i>
+          </button>
           <button class="btn icon-only" @click="prev"><i class="fa-solid fa-chevron-left"></i></button>
           <button class="btn icon-only" @click="next"><i class="fa-solid fa-chevron-right"></i></button>
         </div>
       </div>
       <div class="card-body">
         <label style="font-size:13px; color:var(--text-sub); display:block; margin-bottom:6px;">题目内容</label>
-        <textarea class="modern-input" style="min-height:150px; font-size:16px; line-height:1.6;" readonly>{{ currentQ.text }}</textarea>
         
-        <div style="margin-top:20px; padding:12px; border:1px dashed var(--primary-light); border-radius:8px; display:flex; justify-content:space-between; align-items:center;">
-          <div>
+        <div v-if="currentQ.isCustom && editingQ" style="position:relative;">
+            <textarea v-model="currentQ.text" class="modern-input" rows="6" placeholder="在此输入题目内容，或点击右下角拍照上传..."></textarea>
+            <label for="qOcrInput" class="btn icon-only" style="position:absolute; right:8px; bottom:8px; background:white; border-color:#cbd5e1; color:#64748b; cursor:pointer;" title="拍照/上传题目图片">
+              <i :class="qOcrLoading ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-camera'"></i>
+            </label>
+            <input id="qOcrInput" type="file" accept="image/*" @change="handleQuestionOCR" style="display:none">
+        </div>
+        <div v-else class="modern-input" style="min-height:150px; font-size:16px; line-height:1.6; white-space: pre-wrap; overflow-y: auto;">{{ currentQ.text }}</div>
+        
+        <div style="margin-top:20px; padding:12px; border:1px dashed var(--primary-light); border-radius:8px; display:flex; flex-direction:column; gap:10px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; width:100%;">
             <span style="font-size:12px; color:var(--text-sub);">标准答案</span>
-            <div style="font-family:monospace; font-weight:600; color:var(--primary); font-size:15px;">{{ showTruth ? currentQ.truth : '***' }}</div>
+            <button class="btn" style="font-size:12px; padding:4px 8px;" @click="showTruth = !showTruth">
+              <i :class="showTruth ? 'fa-regular fa-eye-slash' : 'fa-regular fa-eye'"></i> {{ showTruth ? '隐藏' : '查看' }}
+            </button>
           </div>
-          <button class="btn" style="font-size:12px; padding:4px 8px;" @click="showTruth = !showTruth">
-            <i :class="showTruth ? 'fa-regular fa-eye-slash' : 'fa-regular fa-eye'"></i> {{ showTruth ? '隐藏' : '查看' }}
-          </button>
+          
+          <div v-if="showTruth">
+             <div v-if="currentQ.isCustom && editingQ" style="display:flex; gap:8px;">
+                 <input type="text" v-model="currentQ.truth" class="modern-input" placeholder="手动输入或点击 AI 生成">
+                 <button class="btn" @click="solveQuestion" :disabled="solving" title="AI 生成答案">
+                    <i :class="solving ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-wand-magic-sparkles'"></i>
+                 </button>
+             </div>
+             <div v-else style="font-family:monospace; font-weight:600; color:var(--primary); font-size:15px;">{{ currentQ.truth || '***' }}</div>
+          </div>
+          <div v-else style="font-family:monospace; font-weight:600; color:var(--primary); font-size:15px;">***</div>
         </div>
       </div>
     </div>
@@ -187,169 +176,6 @@
   </div>
 </div>
 
-<script>
-const { createApp } = Vue;
-const demoData = [
-  { id:"Q001", text:"小明买了4袋苹果，每袋6个，一共有多少个苹果？", truth:"24", maxScore:1 },
-  { id:"Q002", text:"一辆车每小时行驶60千米，2.5小时行驶多少千米？", truth:"150", maxScore:1 }
-];
-
-createApp({
-  data() {
-    return {
-      questions: [],
-      datasetList: [],
-      records: {},
-      idx: 0,
-      datasetId: 'demo',
-      loading: false,
-      judging: false,
-      
-      // Current Edit State
-      studentAns: '',
-      score: 0,
-      maxScore: 1,
-      note: '',
-      showTruth: false,
-      useAI: false,
-      ocrLoading: false
-    }
-  },
-  computed: {
-    currentQ() { return this.questions[this.idx] || {} },
-    doneCount() { return Object.keys(this.records).length },
-    totalScore() { return Object.values(this.records).reduce((a,b)=>a+(b.score||0), 0) },
-    badgeState() {
-      const r = this.records[this.currentQ.id];
-      if(r) return r.isCorrect ? 'ok' : 'bad';
-      return 'idle';
-    }
-  },
-  mounted() {
-    this.useAI = localStorage.getItem("useAI") === "true";
-    this.init();
-  },
-  watch: {
-    useAI(v) { localStorage.setItem("useAI", v); }
-  },
-  methods: {
-    async init() {
-      try {
-        const res = await fetch('/api/datasets');
-        if(res.ok) this.datasetList = await res.json();
-      } catch(e){}
-      this.loadDataset();
-    },
-    async loadDataset() {
-      if(this.datasetId === 'demo') {
-        this.questions = [...demoData];
-      } else {
-        this.loading = true;
-        try {
-          const res = await fetch(`/api/load?id=${this.datasetId}`);
-          this.questions = await res.json();
-        } catch(e){ alert("Load failed"); }
-        finally { this.loading = false; }
-      }
-      this.idx = 0; this.records = {}; this.select(0);
-    },
-    select(i) {
-      if(!this.questions.length) return;
-      this.idx = i;
-      this.showTruth = false;
-      const r = this.records[this.questions[i].id];
-      if(r) {
-        this.studentAns = r.studentAns;
-        this.score = r.score;
-        this.maxScore = r.maxScore;
-        this.note = r.note;
-      } else {
-        this.clear();
-        this.maxScore = this.questions[i].maxScore || 1;
-      }
-    },
-    prev() { if(this.questions.length) this.select((this.idx - 1 + this.questions.length) % this.questions.length); },
-    next() { if(this.questions.length) this.select((this.idx + 1) % this.questions.length); },
-    clear() { this.studentAns = ''; this.score = 0; this.note = ''; },
-    resetRecord() { delete this.records[this.currentQ.id]; this.select(this.idx); },
-    
-    save() {
-      if(!this.questions.length) return;
-      const isCorrect = this.score > 0 && this.score >= this.maxScore * 0.6;
-      this.records[this.currentQ.id] = {
-        studentAns: this.studentAns, score: this.score, maxScore: this.maxScore, note: this.note, isCorrect
-      };
-    },
-    
-    async judge() {
-      if(!this.studentAns.trim()) return;
-      if(this.useAI) {
-        this.judging = true;
-        try {
-          const res = await fetch("/api/agent/grade", {
-            method: "POST", headers: {"Content-Type": "application/json"},
-            body: JSON.stringify({
-              questionText: this.currentQ.text, standardAnswer: this.currentQ.truth,
-              studentAnswer: this.studentAns, maxScore: String(this.maxScore)
-            })
-          });
-          const ret = await res.json();
-          this.score = ret.score;
-          this.note = (ret.reason || "") + "\n(AI)";
-          // Temp save to update badge state immediately visually
-          this.save(); 
-        } catch(e) { alert("AI Error: "+e.message); }
-        finally { this.judging = false; }
-      } else {
-        // Simple local check
-        const norm = s => String(s).trim().replace(/\s+/g,"");
-        const ok = norm(this.studentAns) == norm(this.currentQ.truth);
-        this.score = ok ? this.maxScore : 0;
-        this.save();
-      }
-    },
-    
-    async handleOCR(e) {
-      const file = e.target.files?.[0];
-      if(!file) return;
-      
-      this.ocrLoading = true;
-      const formData = new FormData();
-      formData.append("file", file);
-      
-      try {
-        const res = await fetch("/api/agent/ocr", {
-          method: "POST",
-          body: formData
-        });
-        if(!res.ok) throw new Error("OCR Failed");
-        const data = await res.json();
-        if(data.text) {
-          // Append or replace? Let's replace if empty, append if not
-          if(!this.studentAns) this.studentAns = data.text;
-          else this.studentAns += "\n" + data.text;
-        }
-      } catch(err) {
-        alert("识别失败: " + err.message);
-      } finally {
-        this.ocrLoading = false;
-        e.target.value = ""; // reset input
-      }
-    },
-    
-    exportData() {
-      const blob = new Blob([JSON.stringify(this.records, null, 2)], {type:"application/json"});
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = "result.json";
-      a.click();
-    },
-    switchRole() {
-      localStorage.removeItem('math_grader_role');
-      window.location.href = '/';
-    }
-  }
-}).mount('#app');
-</script>
+<script src="js/student.js"></script>
 </body>
 </html>

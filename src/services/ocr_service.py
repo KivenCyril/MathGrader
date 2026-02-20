@@ -113,10 +113,21 @@ class OCRService:
         elif strategy_name == "mock":
             return MockOCRStrategy()
         elif strategy_name == "auto":
-            # Try EasyOCR, fallback to Mock
+            # Try EasyOCR
             strategy = EasyOCRStrategy()
             if strategy.available:
                 return strategy
+            
+            # If EasyOCR fails, try Paddle if config exists
+            try:
+                from src.services.config_service import config_service
+                paddle_config = config_service.config.get('ocr', {}).get('paddle', {})
+                if paddle_config.get('api_key'):
+                    logger.info("EasyOCR not available, falling back to PaddleOCR based on config.")
+                    return PaddleOCRStrategy(api_key=paddle_config['api_key'])
+            except Exception as e:
+                logger.warning(f"Failed to fallback to PaddleOCR: {e}")
+
             return MockOCRStrategy()
         else:
             raise ValueError(f"Unknown OCR strategy: {strategy_name}")

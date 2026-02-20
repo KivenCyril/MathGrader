@@ -42,13 +42,14 @@ class LLMClient:
                 "temperature": temperature,
             }
             
-            # Only enable JSON mode if no tools are pending (or if we want final JSON)
-            # Strategy: If tools provided, don't force JSON object yet, let model decide.
-            # But our prompt usually asks for JSON. This is tricky.
-            # Most robust way: If tools enabled, disable response_format, 
-            # and rely on prompt instruction for final JSON.
+            # Try with JSON mode first if no tools (assuming prompt asks for JSON)
+            # But if it fails (e.g. prompt doesn't have "json"), fallback to normal text
+            use_json_mode = False
             if not tools:
+                # Check if we should enforce JSON mode. 
+                # For now, let's try to enforce it, but handle 400 error.
                 payload["response_format"] = {"type": "json_object"}
+                use_json_mode = True
             else:
                 payload["tools"] = tools
                 payload["tool_choice"] = "auto"
@@ -56,6 +57,12 @@ class LLMClient:
             try:
                 url = f"{self.base_url.rstrip('/')}/chat/completions"
                 resp = requests.post(url, headers=headers, json=payload, timeout=60)
+                
+                # If 400 and we used JSON mode, try again without it
+                if resp.status_code == 400 and use_json_mode:
+                    print(f"LLM API 400 Error with JSON mode. Retrying without response_format...")
+                    del payload["response_format"]
+                    resp = requests.post(url, headers=headers, json=payload, timeout=60)
                 
                 if resp.status_code != 200:
                     print(f"LLM API Error: {resp.status_code} - {resp.text}")

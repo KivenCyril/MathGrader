@@ -9,6 +9,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
+import java.util.stream.Collectors;
+
 @RestController
 @RequestMapping("/api")
 @CrossOrigin(origins = "*")
@@ -25,11 +27,36 @@ public class DatasetController {
     public List<Map<String, String>> list() {
         return fileService.listDatasets();
     }
-
-    @GetMapping("/load")
-    public List<Map<String, Object>> load(@RequestParam String id) {
+    
+    @GetMapping("/levels")
+    public List<String> getLevels(@RequestParam String id) {
         try {
             List<Map<String, Object>> raw = fileService.loadAndParse(id);
+            return raw.stream()
+                .map(item -> findField(item, "level", "grade"))
+                .filter(s -> !s.isEmpty())
+                .distinct()
+                .sorted()
+                .collect(Collectors.toList());
+        } catch (Exception e) {
+            return new ArrayList<>();
+        }
+    }
+
+    @GetMapping("/load")
+    public List<Map<String, Object>> load(@RequestParam String id, @RequestParam(required = false) String level) {
+        try {
+            List<Map<String, Object>> raw = fileService.loadAndParse(id);
+            
+            // Filter by level if provided
+            if (level != null && !level.isEmpty()) {
+                raw = raw.stream()
+                    .filter(item -> {
+                        String l = findField(item, "level", "grade");
+                        return level.equals(l);
+                    })
+                    .collect(Collectors.toList());
+            }
             
             // Transform to frontend format
             List<Map<String, Object>> result = new ArrayList<>();
