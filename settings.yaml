@@ -1,0 +1,38 @@
+﻿models:
+  deepseek:
+    api_key: "${DEEPSEEK_API_KEY}"
+    base_url: "https://api.deepseek.com"
+    model_name: "deepseek-chat"
+
+  qwen:
+    api_key: "${QWEN_API_KEY}"
+    base_url: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
+    model_name: "qwen-turbo"
+
+roles:
+  grader: "deepseek"
+  reviewer: "qwen"
+
+ocr:
+  paddle:
+    api_key: "${BAIDU_OCR_API_KEY}"
+    url: "https://aip.baidubce.com/rest/2.0/ocr/v1/general_basic"
+
+agents:
+  solver:
+    model: "qwen"
+    prompt: "v1_solver"
+    tools: ["calculate"]
+  grader:
+    model: "deepseek"
+    prompt: "v1_basic_grader"
+    tools: ["calculate"]
+  reviewer:
+    model: "qwen"
+    prompt: "v1_reviewer"
+
+orchestrator:
+  default_mode: "single"
+
+trace:
+  enabled: true
