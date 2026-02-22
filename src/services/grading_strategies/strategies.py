@@ -16,15 +16,19 @@ class SinglePassStrategy(GradingStrategy):
         self.loader = prompt_loader
         self.version = prompt_version
 
-    def grade(self, context: dict, enable_tools: bool = False) -> dict:
+    def grade(self, context: dict, enable_tools: bool = False, tools=None, tool_map=None) -> dict:
         prompt = self.loader.load(self.version, **context)
         
         messages = [
             {"role": "user", "content": prompt}
         ]
         
-        tools = [CALCULATOR_TOOL_DEF] if enable_tools else None
-        tool_map = {"calculate": calculate} if enable_tools else None
+        if enable_tools:
+            tools = tools if tools is not None else [CALCULATOR_TOOL_DEF]
+            tool_map = tool_map if tool_map is not None else {"calculate": calculate}
+        else:
+            tools = None
+            tool_map = None
         
         # Pass tools to client
         resp = self.client.chat_completion(messages, tools=tools, tool_map=tool_map)

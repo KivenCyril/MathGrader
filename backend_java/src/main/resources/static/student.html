@@ -24,46 +24,116 @@
 <div id="app" v-cloak class="wrap">
   <!-- Topbar -->
   <header class="topbar">
-    <div style="display:flex; align-items:center; gap:12px;">
+    <div style="display:flex; align-items:center; gap:12px; flex:1;">
       <div class="logo-icon"><i class="fa-solid fa-pen-nib"></i></div>
       <div>
         <h1 style="font-size:18px; margin:0;">智能判卷助手</h1>
-        <p style="font-size:13px; color:var(--text-sub); margin:2px 0 0 0;">AI 驱动的小学数学自动批改系统</p>
+        <p style="font-size:13px; color:var(--text-sub); margin:2px 0 0 0;">
+            <span v-if="username" style="color:var(--primary); font-weight:600;">Hi, {{ username }}</span>
+            <span v-else>AI 驱动的小学数学自动批改系统</span>
+        </p>
       </div>
     </div>
-    <div class="stats-group" style="display:flex; gap:12px;">
+    
+    <!-- Mobile Toggle -->
+    <button class="btn icon-only mobile-toggle" @click="showMobileMenu = !showMobileMenu">
+        <i :class="showMobileMenu ? 'fa-solid fa-xmark' : 'fa-solid fa-bars'"></i>
+    </button>
+
+    <!-- Stats (Desktop) -->
+    <div class="stats-group desktop-only" style="display:flex; gap:12px;">
       <div class="stat-pill"><i class="fa-solid fa-list-check"></i> <strong>{{ doneCount }}</strong> / {{ questions.length }}</div>
       <div class="stat-pill"><i class="fa-solid fa-star"></i> <strong>{{ totalScore }}</strong> 分</div>
     </div>
-    <div style="display:flex; gap:10px;">
-      <button @click="switchRole" class="btn" title="切换身份">
-        <i class="fa-solid fa-arrow-right-from-bracket"></i>
+
+    <!-- Nav Menu -->
+    <div :class="['nav-menu', { 'show': showMobileMenu }]">
+      <!-- Mobile Stats -->
+      <div class="stats-group mobile-only" style="margin-bottom:16px; display:flex; gap:12px; justify-content:center;">
+          <div class="stat-pill"><i class="fa-solid fa-list-check"></i> <strong>{{ doneCount }}</strong> / {{ questions.length }}</div>
+          <div class="stat-pill"><i class="fa-solid fa-star"></i> <strong>{{ totalScore }}</strong> 分</div>
+      </div>
+      
+      <button @click="logout" class="btn" title="退出登录">
+        <i class="fa-solid fa-arrow-right-from-bracket"></i> <span class="mobile-label">退出登录</span>
       </button>
+      
       <select v-model="datasetId" @change="onDatasetChange" class="btn">
         <option value="demo">示例题目</option>
         <option v-for="d in datasetList" :key="d.id" :value="d.id">{{ d.name }}</option>
       </select>
+      
       <select v-if="levels.length > 0" v-model="selectedLevel" @change="loadDataset" class="btn" style="max-width: 100px;">
         <option value="">全部等级</option>
         <option v-for="l in levels" :key="l" :value="l">{{ l }}</option>
       </select>
+      
       <button @click="addCustomQuestion" class="btn primary">
         <i class="fa-solid fa-camera"></i> 拍照/自定义
       </button>
       <button @click="loadDataset" class="btn primary" :disabled="loading">
         <i :class="loading ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-cloud-arrow-down'"></i> 载入
       </button>
+      <button @click="openHistory" class="btn"><i class="fa-solid fa-clock-rotate-left"></i> 历史</button>
       <button @click="exportData" class="btn"><i class="fa-solid fa-download"></i> 导出</button>
     </div>
+    
+    <!-- Overlay for mobile menu -->
+    <div v-if="showMobileMenu" class="mobile-overlay" @click="showMobileMenu = false"></div>
   </header>
+
+  <!-- History Modal -->
+  <div v-if="showHistoryModal" class="modal-overlay" @click.self="showHistoryModal = false">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>提交历史记录</h3>
+        <button @click="showHistoryModal = false" class="btn icon-only"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="modal-body">
+        <div v-if="historyLoading" style="text-align:center; padding:20px; color:var(--text-sub);">
+            <i class="fa-solid fa-spinner fa-spin"></i> 正在加载数据...
+        </div>
+        <div v-else-if="historyList.length === 0" style="text-align:center; padding:20px; color:var(--text-sub);">
+            暂无提交记录
+        </div>
+        <table v-else class="history-table">
+          <thead>
+            <tr>
+              <th style="width:140px;">时间</th>
+              <th>题目摘要</th>
+              <th style="width:80px;">得分</th>
+              <th style="width:80px;">结果</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="h in historyList" :key="h.id">
+              <td style="font-size:12px; color:var(--text-sub);">{{ new Date(h.submittedAt).toLocaleString() }}</td>
+              <td :title="h.questionText" style="max-width:200px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+                  {{ h.questionText }}
+              </td>
+              <td>{{ h.score }}</td>
+              <td>
+                <span :class="h.correct ? 'tag-ok' : 'tag-bad'">
+                  {{ h.correct ? '正确' : '错误' }}
+                </span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
 
   <!-- Main Grid -->
   <div class="main-grid">
     <!-- List -->
-    <div class="card">
-      <div class="card-header"><i class="fa-solid fa-list-ul"></i> 题目列表</div>
+    <div :class="['card', 'list-card', { 'show': showList }]">
+      <div class="card-header">
+          <span><i class="fa-solid fa-list-ul"></i> 题目列表</span>
+          <button class="btn icon-only mobile-only" @click="showList = false"><i class="fa-solid fa-xmark"></i></button>
+      </div>
       <div class="card-body">
-        <div v-for="(q, i) in displayQuestions" :key="q.id" @click="select(i + page * pageSize)" 
+        <div v-for="(q, i) in displayQuestions" :key="q.id" @click="select(i + page * pageSize); showList = false" 
              :class="['q-item', { active: idx === (i + page * pageSize) }]">
           <div style="font-weight:600; font-size:13px;">{{ q.id }}</div>
           <div style="font-size:12px; color:var(--text-sub); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ q.text }}</div>
@@ -83,7 +153,12 @@
     <!-- Detail -->
     <div class="card">
       <div class="card-header">
-        <span>当前题目 {{ currentQ.id }}</span>
+        <div style="display:flex; align-items:center; gap:8px;">
+            <button class="btn icon-only mobile-only" @click="showList = !showList" :class="{ 'primary': showList }">
+                <i class="fa-solid fa-list"></i>
+            </button>
+            <span>当前题目 {{ currentQ.id }}</span>
+        </div>
         <div style="display:flex; gap:8px;">
           <button v-if="currentQ.isCustom" class="btn icon-only" @click="editingQ = !editingQ" :title="editingQ ? '预览' : '编辑'">
             <i :class="editingQ ? 'fa-regular fa-eye' : 'fa-solid fa-pen-to-square'"></i>

@@ -45,21 +45,13 @@
     </div>
 
     <div class="mt-12 text-xs text-slate-400">
-      <p>System auto-remembers your choice. To switch, click "Switch Role" inside.</p>
+      <p>系统已启用安全登录，点击上方角色将跳转至认证页面。</p>
     </div>
   </div>
 
   <script>
-    // Auto-redirect if preference exists
-    const lastRole = localStorage.getItem('math_grader_role');
-    if (lastRole) {
-      // Direct jump to last role
-      window.location.href = lastRole === 'admin' ? '/admin.html' : '/student.html';
-    }
-
-    function selectRole(role) {
-      localStorage.setItem('math_grader_role', role);
-    }
+    // Local storage logic removed in favor of server-side auth
+    localStorage.removeItem('math_grader_role');
   </script>
 </body>
 </html>

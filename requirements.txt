@@ -1,3 +1,9 @@
 python-dotenv
 Flask==3.1.0
 flask-cors
+requests
+PyYAML
+paddlepaddle
+paddleocr
+matplotlib
+pandas

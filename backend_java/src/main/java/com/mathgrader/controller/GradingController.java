@@ -2,9 +2,14 @@ package com.mathgrader.controller;
 
 import com.mathgrader.model.GradeRequest;
 import com.mathgrader.model.GradeResponse;
+import com.mathgrader.model.Submission;
+import com.mathgrader.repository.SubmissionRepository;
 import com.mathgrader.service.PythonAgentBridgeService;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
+import java.security.Principal;
 import java.util.List;
 import java.util.Map;
 
@@ -12,13 +17,14 @@ import org.springframework.web.multipart.MultipartFile;
 
 @RestController
 @RequestMapping("/api/agent")
-@CrossOrigin(origins = "*")
 public class GradingController {
 
     private final PythonAgentBridgeService agentBridge;
+    private final SubmissionRepository submissionRepository;
 
-    public GradingController(PythonAgentBridgeService agentBridge) {
+    public GradingController(PythonAgentBridgeService agentBridge, SubmissionRepository submissionRepository) {
         this.agentBridge = agentBridge;
+        this.submissionRepository = submissionRepository;
     }
     
     @PostMapping("/ocr")
@@ -32,8 +38,53 @@ public class GradingController {
     }
 
     @PostMapping("/grade")
-    public GradeResponse grade(@RequestBody GradeRequest request) {
-        return agentBridge.callPythonAgent(request);
+    public GradeResponse grade(@RequestBody GradeRequest request, Principal principal) {
+        GradeResponse response = agentBridge.callPythonAgent(request);
+        
+        // Save submission to database
+        try {
+            Submission submission = new Submission();
+            submission.setStudentName(principal != null ? principal.getName() : "anonymous");
+            submission.setQuestionText(request.getQuestionText());
+            submission.setStandardAnswer(request.getStandardAnswer());
+            submission.setStudentAnswer(request.getStudentAnswer());
+            submission.setModelUsed(request.getModel());
+            
+            try {
+                if (request.getMaxScore() != null && !request.getMaxScore().isEmpty()) {
+                    submission.setMaxScore(Double.parseDouble(request.getMaxScore()));
+                }
+            } catch (NumberFormatException e) {
+                // Ignore parsing error
+                submission.setMaxScore(0);
+            }
+
+            if (response != null) {
+                submission.setScore(response.getScore());
+                submission.setCorrect(response.isCorrect());
+                submission.setReason(response.getReason());
+            }
+            
+            submissionRepository.save(submission);
+        } catch (Exception e) {
+            e.printStackTrace();
+            // Continue even if save fails
+        }
+        
+        return response;
+    }
+    
+    @GetMapping("/history")
+    public List<Submission> getHistory(Principal principal) {
+        if (principal == null) return List.of();
+        
+        // If admin, return all
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"))) {
+            return submissionRepository.findAllByOrderBySubmittedAtDesc();
+        }
+        
+        return submissionRepository.findAllByStudentNameOrderBySubmittedAtDesc(principal.getName());
     }
     
     @PostMapping("/solve")
@@ -44,5 +95,11 @@ public class GradingController {
     @GetMapping("/health")
     public String health() {
         return "Java Web Backend is Running! Connected to Python Agent.";
+    }
+    
+    @GetMapping("/me")
+    public Map<String, String> me(Principal principal) {
+        if (principal == null) return Map.of("username", "anonymous");
+        return Map.of("username", principal.getName());
     }
 }

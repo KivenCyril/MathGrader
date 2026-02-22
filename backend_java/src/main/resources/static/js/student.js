@@ -29,7 +29,13 @@ createApp({
       ocrLoading: false,
       qOcrLoading: false,
       editingQ: false,
-      solving: false
+      solving: false,
+      showHistoryModal: false,
+      historyList: [],
+      historyLoading: false,
+      username: '',
+      showMobileMenu: false,
+      showList: false
     }
   },
   computed: {
@@ -63,6 +69,14 @@ createApp({
         });
     },
     async init() {
+      try {
+        const me = await fetch('/api/agent/me');
+        if(me.ok) {
+            const u = await me.json();
+            this.username = u.username;
+        }
+      } catch(e){}
+
       try {
         const res = await fetch('/api/datasets');
         if(res.ok) this.datasetList = await res.json();
@@ -268,9 +282,29 @@ createApp({
       a.download = "result.json";
       a.click();
     },
-    switchRole() {
-      localStorage.removeItem('math_grader_role');
-      window.location.href = '/';
+    async openHistory() {
+        this.showHistoryModal = true;
+        this.historyLoading = true;
+        this.historyList = [];
+        try {
+            const res = await fetch("/api/agent/history");
+            if(res.ok) {
+                this.historyList = await res.json();
+            }
+        } catch(e) {
+            console.error("Fetch history failed", e);
+        } finally {
+            this.historyLoading = false;
+        }
+    },
+    async logout() {
+        // Since CSRF is disabled, a simple GET might not work if configured as POST-only.
+        // Let's create a hidden form and submit it.
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = '/api/auth/logout';
+        document.body.appendChild(form);
+        form.submit();
     }
   }
 }).mount('#app');

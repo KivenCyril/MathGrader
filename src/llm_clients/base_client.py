@@ -1,6 +1,5 @@
 import requests
 import json
-import os
 
 class LLMClient:
     def __init__(self, config=None):
@@ -11,21 +10,42 @@ class LLMClient:
         self.api_key = config.get("api_key")
         self.base_url = config.get("base_url", "https://api.openai.com/v1")
         self.model = config.get("model_name", "gpt-3.5-turbo")
+        self.demo_answer = config.get("demo_answer", "").strip()
+
+    def _demo_reply(self, content: str):
+        return {
+            "choices": [{
+                "message": {
+                    "content": content
+                }
+            }]
+        }
+
+    def _demo_grade_json(self):
+        return json.dumps({
+            "correct": False,
+            "score": 0,
+            "reason": f"API Key Missing for model {self.model}. Configure settings.yaml or environment variables."
+        })
+
+    def _demo_solve_text(self):
+        if self.demo_answer:
+            return self.demo_answer
+        return f"[Demo] API Key Missing for model {self.model}. Please configure settings.yaml."
+
+    def _expects_json(self, messages) -> bool:
+        for msg in messages:
+            content = (msg.get("content") or "")
+            if "json" in content.lower():
+                return True
+        return False
 
     def chat_completion(self, messages, temperature=0.7, tools=None, tool_map=None, max_tool_rounds=3):
         if not self.api_key:
-             # Fallback mock for demo if no API key
-            return {
-                "choices": [{
-                    "message": {
-                        "content": json.dumps({
-                            "correct": False,
-                            "score": 0,
-                            "reason": f"API Key Missing for model {self.model}. Please check settings.yaml."
-                        })
-                    }
-                }]
-            }
+            # Fallback mock for demo if no API key
+            wants_json = self._expects_json(messages)
+            content = self._demo_grade_json() if wants_json else self._demo_solve_text()
+            return self._demo_reply(content)
 
         headers = {
             "Authorization": f"Bearer {self.api_key}",

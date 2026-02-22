@@ -1,5 +1,4 @@
 import yaml
-import os
 from pathlib import Path
 
 class ConfigService:
