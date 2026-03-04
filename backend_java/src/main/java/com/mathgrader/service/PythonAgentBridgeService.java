@@ -91,4 +91,20 @@ public class PythonAgentBridgeService {
             return List.of("default");
         }
     }
+
+    public List<Map<String, Object>> getGradingMethods() {
+        try {
+            return webClient.get()
+                    .uri(pythonAgentUrl + "/grading-methods")
+                    .retrieve()
+                    .bodyToMono(List.class)
+                    .timeout(Duration.ofSeconds(5))
+                    .block();
+        } catch (Exception e) {
+            return List.of(
+                    Map.of("id", "small_fast", "kind", "small_fast", "label", "Small Fast (2 Small Datasets)", "isDefault", true),
+                    Map.of("id", "rag_ape", "kind", "rag_ape", "label", "RAG (APE)", "isDefault", false)
+            );
+        }
+    }
 }

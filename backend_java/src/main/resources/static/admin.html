@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿﻿<!DOCTYPE html>
 <html lang="zh-Hans">
 <head>
   <meta charset="utf-8" />
@@ -37,20 +37,20 @@
       <!-- Nav -->
       <nav class="flex gap-2 text-sm text-slate-600 w-full md:w-auto bg-slate-50 md:bg-transparent p-1 md:p-0 rounded-lg justify-center md:justify-start">
         <div :class="['nav-item flex-1 md:flex-none text-center', currentTab==='grading'?'active':'']" @click="currentTab='grading'">
-          <i class="fa-solid fa-flask"></i> 模型调试
+          <i class="fa-solid fa-flask"></i> 妯″瀷璋冭瘯
         </div>
         <div :class="['nav-item flex-1 md:flex-none text-center', currentTab==='users'?'active':'']" @click="currentTab='users'">
-          <i class="fa-solid fa-users"></i> 用户管理
+          <i class="fa-solid fa-users"></i> 鐢ㄦ埛绠＄悊
         </div>
       </nav>
     </div>
     
     <div class="flex gap-3 w-full md:w-auto">
       <button v-if="currentTab==='grading'" @click="loadDatasets" class="flex-1 md:flex-none px-3 py-1.5 text-sm bg-slate-100 hover:bg-slate-200 rounded text-slate-600">
-        <i class="fa-solid fa-rotate"></i> 刷新
+        <i class="fa-solid fa-rotate"></i> 鍒锋柊
       </button>
       <button @click="logout" class="flex-1 md:flex-none px-3 py-1.5 text-sm border border-slate-300 hover:bg-slate-50 rounded text-slate-600">
-        <i class="fa-solid fa-arrow-right-from-bracket"></i> 退出
+        <i class="fa-solid fa-arrow-right-from-bracket"></i> 閫€鍑?
       </button>
     </div>
   </header>
@@ -61,7 +61,7 @@
     <aside class="w-full md:w-72 bg-white border-b md:border-b-0 md:border-r border-slate-200 flex flex-col h-64 md:h-auto shrink-0">
       <div class="p-3 border-b border-slate-100 bg-slate-50">
         <select v-model="currentDatasetId" @change="loadQuestions" class="w-full text-sm border-slate-300 rounded p-1.5">
-          <option value="demo">示例题目 (Demo)</option>
+          <option value="demo">绀轰緥棰樼洰 (Demo)</option>
           <option v-for="d in datasets" :key="d.id" :value="d.id">{{ d.name }}</option>
         </select>
       </div>
@@ -89,7 +89,7 @@
       <div class="p-4 border-b border-slate-200 bg-white flex justify-between items-center sticky top-0 md:static z-10 shadow-sm md:shadow-none">
         <div class="flex flex-col gap-1">
           <h2 class="font-semibold text-slate-700 flex items-center gap-2">
-            <i class="fa-solid fa-user-graduate text-indigo-500"></i> <span class="hidden md:inline">模型 A</span> (Solver)
+            <i class="fa-solid fa-user-graduate text-indigo-500"></i> <span class="hidden md:inline">妯″瀷 A</span> (Solver)
           </h2>
           <span class="text-xs px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded-full font-mono w-fit">Student</span>
         </div>
@@ -102,8 +102,8 @@
       <div class="flex-1 p-4 md:p-6 overflow-y-auto scroll-custom">
         <!-- Question Card -->
         <div class="bg-white p-4 md:p-5 rounded-xl shadow-sm border border-slate-200 mb-6">
-          <div class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">题目 Question</div>
-          <div class="text-slate-800 text-base md:text-lg leading-relaxed font-medium">{{ currentQuestion.text || '请选择一道题目...' }}</div>
+          <div class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">棰樼洰 Question</div>
+          <div class="text-slate-800 text-base md:text-lg leading-relaxed font-medium">{{ currentQuestion.text || '璇烽€夋嫨涓€閬撻鐩?..' }}</div>
           <div class="mt-4 pt-4 border-t border-slate-100 flex flex-wrap gap-4 text-sm text-slate-500">
             <div><span class="font-semibold">ID:</span> {{ currentQuestion.id }}</div>
             <div><span class="font-semibold">Meta:</span> {{ currentQuestion.meta || '-' }}</div>
@@ -114,16 +114,16 @@
         <!-- Solver Output -->
         <div class="bg-white p-4 md:p-5 rounded-xl shadow-sm border border-slate-200 relative group">
           <div class="flex justify-between items-center mb-3">
-            <div class="text-xs font-bold text-slate-400 uppercase tracking-wider">生成的答案</div>
+            <div class="text-xs font-bold text-slate-400 uppercase tracking-wider">鐢熸垚鐨勭瓟妗?/div>
             <button @click="copyAnswer" class="text-xs text-indigo-500 hover:text-indigo-700 md:opacity-0 md:group-hover:opacity-100 transition">
-              <i class="fa-regular fa-copy"></i> 复制
+              <i class="fa-regular fa-copy"></i> 澶嶅埗
             </button>
           </div>
           
           <textarea 
             v-model="studentAnswer" 
             class="w-full h-40 p-3 bg-slate-50 border border-slate-200 rounded-lg text-slate-700 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition font-mono text-sm"
-            placeholder="等待生成或手动输入..."
+            placeholder="绛夊緟鐢熸垚鎴栨墜鍔ㄨ緭鍏?.."
           ></textarea>
 
           <div class="mt-4 flex gap-3">
@@ -133,7 +133,7 @@
               class="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white rounded-lg font-medium transition shadow-sm flex items-center justify-center gap-2"
             >
               <i v-if="isSolving" class="fa-solid fa-circle-notch fa-spin"></i>
-              <span v-else><i class="fa-solid fa-wand-magic-sparkles"></i> 生成 (Solve)</span>
+              <span v-else><i class="fa-solid fa-wand-magic-sparkles"></i> 鐢熸垚 (Solve)</span>
             </button>
           </div>
         </div>
@@ -145,7 +145,7 @@
       <div class="p-4 border-b border-slate-200 flex justify-between items-center sticky top-0 md:static z-10 bg-white shadow-sm md:shadow-none">
         <div class="flex flex-col gap-1">
           <h2 class="font-semibold text-slate-700 flex items-center gap-2">
-            <i class="fa-solid fa-chalkboard-user text-emerald-500"></i> <span class="hidden md:inline">模型 B</span> (Grader)
+            <i class="fa-solid fa-chalkboard-user text-emerald-500"></i> <span class="hidden md:inline">妯″瀷 B</span> (Grader)
           </h2>
           <span class="text-xs px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-full font-mono w-fit">Teacher</span>
         </div>
@@ -159,9 +159,9 @@
         <!-- Truth -->
         <div class="mb-6 p-4 bg-emerald-50/50 border border-emerald-100 rounded-lg">
           <div class="flex justify-between items-center mb-1">
-            <div class="text-xs font-bold text-emerald-600/70 uppercase">标准答案 Truth</div>
+            <div class="text-xs font-bold text-emerald-600/70 uppercase">鏍囧噯绛旀 Truth</div>
             <button @click="showTruth = !showTruth" class="text-xs text-emerald-600 hover:underline">
-              {{ showTruth ? '隐藏' : '显示' }}
+              {{ showTruth ? '闅愯棌' : '鏄剧ず' }}
             </button>
           </div>
           <div class="font-mono text-emerald-800 font-medium break-all">
@@ -175,18 +175,38 @@
             gradingResult.correct ? 'bg-green-50 border-green-200 text-green-800' : 'bg-red-50 border-red-200 text-red-800']">
             <i :class="['text-2xl fa-solid', gradingResult.correct ? 'fa-circle-check' : 'fa-circle-xmark']"></i>
             <div>
-              <div class="font-bold text-lg">{{ gradingResult.correct ? '正确' : '错误' }}</div>
-              <div class="text-sm opacity-80">得分: {{ gradingResult.score }} / {{ currentQuestion.maxScore || 1 }}</div>
+              <div class="font-bold text-lg">{{ gradingResult.correct ? '姝ｇ‘' : '閿欒' }}</div>
+              <div class="text-sm opacity-80">寰楀垎: {{ gradingResult.score }} / {{ currentQuestion.maxScore || 1 }}</div>
             </div>
           </div>
 
           <div class="bg-slate-50 border border-slate-200 rounded-lg p-4">
-            <div class="text-xs font-bold text-slate-400 uppercase mb-2">判卷评语 Feedback</div>
+            <div class="text-xs font-bold text-slate-400 uppercase mb-2">鍒ゅ嵎璇勮 Feedback</div>
             <div class="text-slate-700 text-sm whitespace-pre-wrap">{{ gradingResult.reason }}</div>
+
+            <div v-if="gradingResult.methodUsed" class="mt-3 text-xs text-slate-500">
+              Method: <span class="font-mono">{{ gradingResult.methodUsed }}</span>
+            </div>
+
+            <div v-if="gradingResult.comparison" class="mt-3 pt-3 border-t border-slate-200">
+              <div class="text-xs font-bold text-slate-400 uppercase mb-2">Method Comparison</div>
+              <div v-for="(ret, method) in gradingResult.comparison" :key="method" class="text-xs text-slate-600 mb-1">
+                <span class="font-mono">{{ method }}</span>: score={{ ret.score }}, correct={{ ret.correct }}
+              </div>
+            </div>
+
+            <div v-if="gradingResult.similarQuestions && gradingResult.similarQuestions.length" class="mt-3 pt-3 border-t border-slate-200">
+              <div class="text-xs font-bold text-slate-400 uppercase mb-2">Similar Practice Questions</div>
+              <div v-for="item in gradingResult.similarQuestions" :key="item.questionId" class="mb-2 p-2 bg-white border border-slate-200 rounded">
+                <div class="text-xs text-slate-500 mb-1">#{{ item.questionId }} | score={{ item.score }}</div>
+                <div class="text-sm text-slate-700">{{ item.question }}</div>
+                <div class="text-xs text-indigo-600 mt-1">Answer: {{ item.truth }}</div>
+              </div>
+            </div>
             
             <div v-if="gradingResult.details" class="mt-4 pt-4 border-t border-slate-200">
                <details class="text-xs text-slate-500">
-                 <summary class="cursor-pointer hover:text-slate-700">查看原始 JSON</summary>
+                 <summary class="cursor-pointer hover:text-slate-700">鏌ョ湅鍘熷 JSON</summary>
                  <pre class="mt-2 p-2 bg-slate-100 rounded overflow-x-auto">{{ JSON.stringify(gradingResult, null, 2) }}</pre>
                </details>
             </div>
@@ -195,18 +215,30 @@
 
         <div v-else class="h-40 flex flex-col items-center justify-center text-slate-300 border-2 border-dashed border-slate-100 rounded-lg">
           <i class="fa-solid fa-clipboard-check text-3xl mb-2"></i>
-          <span class="text-sm">等待判卷...</span>
+          <span class="text-sm">绛夊緟鍒ゅ嵎...</span>
         </div>
       </div>
 
       <div class="p-4 border-t border-slate-200 bg-slate-50 sticky bottom-0 md:static z-10">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-2 mb-3">
+          <select v-model="selectedGradingMethod" class="text-xs border border-slate-300 rounded px-2 py-2 bg-white text-slate-600 outline-none">
+            <option v-for="m in gradingMethods" :key="m.id" :value="m.id">{{ m.label || m.id }}</option>
+          </select>
+          <select v-model="compareMethod" :disabled="!enableMethodCompare || compareMethodOptions.length===0" class="text-xs border border-slate-300 rounded px-2 py-2 bg-white text-slate-600 outline-none disabled:bg-slate-100">
+            <option v-for="m in compareMethodOptions" :key="m.id" :value="m.id">{{ m.label || m.id }}</option>
+          </select>
+        </div>
+        <label class="text-xs text-slate-500 flex items-center gap-2 mb-3">
+          <input type="checkbox" v-model="enableMethodCompare">
+          Compare with another method
+        </label>
         <button 
           @click="runGrader" 
           :disabled="!studentAnswer || isGrading"
           class="w-full py-3 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white rounded-lg font-medium transition shadow-sm flex items-center justify-center gap-2"
         >
           <i v-if="isGrading" class="fa-solid fa-circle-notch fa-spin"></i>
-          <span v-else><i class="fa-solid fa-gavel"></i> 提交判卷 (Grade)</span>
+          <span v-else><i class="fa-solid fa-gavel"></i> 鎻愪氦鍒ゅ嵎 (Grade)</span>
         </button>
       </div>
     </section>
@@ -216,9 +248,9 @@
   <main v-else class="flex-1 bg-slate-50 p-6 overflow-y-auto">
     <div class="max-w-5xl mx-auto">
         <div class="flex justify-between items-center mb-6">
-            <h2 class="text-xl font-bold text-slate-800">用户管理</h2>
+            <h2 class="text-xl font-bold text-slate-800">鐢ㄦ埛绠＄悊</h2>
             <button @click="openUserModal()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2">
-                <i class="fa-solid fa-plus"></i> 新增用户
+                <i class="fa-solid fa-plus"></i> 鏂板鐢ㄦ埛
             </button>
         </div>
 
@@ -227,9 +259,9 @@
                 <thead class="bg-slate-50 text-slate-500 uppercase text-xs">
                     <tr>
                         <th class="px-6 py-3">ID</th>
-                        <th class="px-6 py-3">用户名</th>
-                        <th class="px-6 py-3">角色</th>
-                        <th class="px-6 py-3 text-right">操作</th>
+                        <th class="px-6 py-3">鐢ㄦ埛鍚?/th>
+                        <th class="px-6 py-3">瑙掕壊</th>
+                        <th class="px-6 py-3 text-right">鎿嶄綔</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-100">
@@ -245,8 +277,8 @@
                             </span>
                         </td>
                         <td class="px-6 py-3 text-right">
-                            <button @click="openUserModal(u)" class="text-indigo-600 hover:text-indigo-800 mr-3">编辑</button>
-                            <button @click="deleteUser(u)" class="text-red-600 hover:text-red-800">删除</button>
+                            <button @click="openUserModal(u)" class="text-indigo-600 hover:text-indigo-800 mr-3">缂栬緫</button>
+                            <button @click="deleteUser(u)" class="text-red-600 hover:text-red-800">鍒犻櫎</button>
                         </td>
                     </tr>
                 </tbody>
@@ -267,20 +299,20 @@
   <div v-if="showUserModal" class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" @click.self="showUserModal = false">
       <div class="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden">
           <div class="px-6 py-4 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
-              <h3 class="font-bold text-slate-800">{{ editingUser.id ? '编辑用户' : '新增用户' }}</h3>
+              <h3 class="font-bold text-slate-800">{{ editingUser.id ? '缂栬緫鐢ㄦ埛' : '鏂板鐢ㄦ埛' }}</h3>
               <button @click="showUserModal = false" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark"></i></button>
           </div>
           <div class="p-6 space-y-4">
               <div>
-                  <label class="block text-sm font-medium text-slate-700 mb-1">用户名</label>
+                  <label class="block text-sm font-medium text-slate-700 mb-1">鐢ㄦ埛鍚?/label>
                   <input v-model="editingUser.username" type="text" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none">
               </div>
               <div>
-                  <label class="block text-sm font-medium text-slate-700 mb-1">密码 <span v-if="editingUser.id" class="text-xs text-slate-400 font-normal">(留空不修改)</span></label>
+                  <label class="block text-sm font-medium text-slate-700 mb-1">瀵嗙爜 <span v-if="editingUser.id" class="text-xs text-slate-400 font-normal">(鐣欑┖涓嶄慨鏀?</span></label>
                   <input v-model="editingUser.password" type="password" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none">
               </div>
               <div>
-                  <label class="block text-sm font-medium text-slate-700 mb-1">角色</label>
+                  <label class="block text-sm font-medium text-slate-700 mb-1">瑙掕壊</label>
                   <select v-model="editingUser.role" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white">
                       <option value="ROLE_STUDENT">Student</option>
                       <option value="ROLE_TEACHER">Teacher</option>
@@ -289,8 +321,8 @@
               </div>
           </div>
           <div class="px-6 py-4 bg-slate-50 border-t border-slate-100 flex justify-end gap-3">
-              <button @click="showUserModal = false" class="px-4 py-2 text-sm text-slate-600 hover:bg-slate-200 rounded-lg">取消</button>
-              <button @click="saveUser" class="px-4 py-2 text-sm bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg">保存</button>
+              <button @click="showUserModal = false" class="px-4 py-2 text-sm text-slate-600 hover:bg-slate-200 rounded-lg">鍙栨秷</button>
+              <button @click="saveUser" class="px-4 py-2 text-sm bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg">淇濆瓨</button>
           </div>
       </div>
   </div>
@@ -310,8 +342,12 @@
         datasets: [],
         questions: [],
         availableModels: [],
+        gradingMethods: [],
         selectedSolver: '',
         selectedGrader: '',
+        selectedGradingMethod: 'small_fast',
+        enableMethodCompare: false,
+        compareMethod: '',
         currentIndex: -1,
         currentDatasetId: 'demo',
         studentAnswer: '',
@@ -332,6 +368,9 @@
     computed: {
       currentQuestion() {
         return this.currentIndex >= 0 ? this.questions[this.currentIndex] : {};
+      },
+      compareMethodOptions() {
+        return this.gradingMethods.filter(m => m.id !== this.selectedGradingMethod);
       }
     },
     watch: {
@@ -342,6 +381,7 @@
     mounted() {
       this.initDatasets();
       this.initModels();
+      this.initGradingMethods();
       this.loadQuestions();
     },
     methods: {
@@ -350,6 +390,28 @@
           const res = await fetch('/api/agent/models');
           if (res.ok) this.availableModels = await res.json();
         } catch (e) {}
+      },
+      async initGradingMethods() {
+        try {
+          const res = await fetch('/api/agent/grading-methods');
+          if (!res.ok) throw new Error('failed');
+          const methods = await res.json();
+          if (Array.isArray(methods) && methods.length) {
+            this.gradingMethods = methods;
+            const defaultMethod = methods.find(m => m.isDefault) || methods[0];
+            this.selectedGradingMethod = defaultMethod.id;
+            const compareFallback = methods.find(m => m.id !== defaultMethod.id);
+            this.compareMethod = compareFallback ? compareFallback.id : '';
+            return;
+          }
+        } catch (e) {}
+
+        this.gradingMethods = [
+          { id: 'small_fast', kind: 'small_fast', label: 'Small Fast (2 Small Datasets)', isDefault: true },
+          { id: 'rag_ape', kind: 'rag_ape', label: 'RAG (APE)', isDefault: false }
+        ];
+        this.selectedGradingMethod = 'small_fast';
+        this.compareMethod = 'rag_ape';
       },
       async initDatasets() {
         try {
@@ -361,8 +423,8 @@
       async loadQuestions() {
         if (this.currentDatasetId === 'demo') {
           this.questions = [
-            { id:"Q001", meta:"G4 Demo", text:"小明买了4袋苹果，每袋6个，一共有多少个苹果？", truth:"24", maxScore:1 },
-            { id:"Q002", meta:"G5 Demo", text:"一辆车每小时行驶60千米，2.5小时行驶多少千米？", truth:"150", maxScore:1 }
+            { id:"Q001", meta:"G4 Demo", text:"灏忔槑涔颁簡4琚嬭嫻鏋滐紝姣忚6涓紝涓€鍏辨湁澶氬皯涓嫻鏋滐紵", truth:"24", maxScore:1 },
+            { id:"Q002", meta:"G5 Demo", text:"涓€杈嗚溅姣忓皬鏃惰椹?0鍗冪背锛?.5灏忔椂琛岄┒澶氬皯鍗冪背锛?, truth:"150", maxScore:1 }
           ];
         } else {
           try {
@@ -417,6 +479,7 @@
         if (!this.studentAnswer) return;
         this.isGrading = true;
         try {
+          const compareMethods = this.enableMethodCompare && this.compareMethod ? [this.compareMethod] : [];
           const res = await fetch('/api/agent/grade', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
@@ -426,7 +489,13 @@
               studentAnswer: this.studentAnswer,
               maxScore: this.currentQuestion.maxScore || 1,
               mode: 'review', 
-              model: this.selectedGrader
+              model: this.selectedGrader,
+              gradingMethod: this.selectedGradingMethod,
+              compareMethods: compareMethods,
+              datasetId: this.currentDatasetId === 'demo' ? null : this.currentDatasetId,
+              questionId: this.currentQuestion.id,
+              recommendationCount: 3,
+              retrievalTopK: 5
             })
           });
           const result = await res.json();
@@ -509,3 +578,4 @@
 </script>
 </body>
 </html>
+

@@ -1,0 +1,5 @@
+Question:
+{{question}}
+
+Draft answer:
+{{draft_answer}}

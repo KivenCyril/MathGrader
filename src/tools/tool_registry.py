@@ -15,3 +15,12 @@ class ToolRegistry:
 
     def get_tool_map(self, names: List[str]) -> Dict[str, Callable[..., Any]]:
         return {n: self._handlers[n] for n in names if n in self._handlers}
+
+    def list_names(self) -> List[str]:
+        return list(self._tools.keys())
+
+    def get_all_tools(self) -> List[Dict[str, Any]]:
+        return list(self._tools.values())
+
+    def get_all_tool_map(self) -> Dict[str, Callable[..., Any]]:
+        return dict(self._handlers)

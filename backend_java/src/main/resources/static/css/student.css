@@ -27,10 +27,24 @@
     .btn.icon-only { padding: 8px; width: 36px; height: 36px; border-radius: 50%; }
     
     /* Layout */
-    .main-grid { display: grid; grid-template-columns: 280px 1fr 340px; gap: 20px; flex: 1; min-height: 0; }
+    .main-grid { display: grid; grid-template-columns: 280px 1fr 340px; gap: 20px; align-items: start; }
     .card { background: var(--panel); border-radius: var(--radius); box-shadow: var(--shadow); border: 1px solid var(--line); display: flex; flex-direction: column; overflow: hidden; }
     .card-header { padding: 16px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center; background: #fdfdfd; font-weight: 600; font-size: 15px; }
-    .card-body { padding: 16px; flex: 1; overflow-y: auto; }
+    .card-body { padding: 16px; overflow-y: auto; }
+    .list-card { max-height: calc(100vh - 130px); }
+    .list-card .card-body { max-height: calc(100vh - 190px); overflow-y: auto; }
+
+    .insight-panel { margin-top: 14px; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: #f8fbff; }
+    .insight-title { font-size: 13px; font-weight: 600; color: var(--text-sub); display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+    .insight-note { min-height: 110px; background: #fff; resize: vertical; }
+    .comparison-row { font-size: 12px; line-height: 1.6; margin-bottom: 4px; color: var(--text-main); }
+
+    .recommendation-board { grid-column: 1 / 4; }
+    .recommend-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 12px; }
+    .recommend-card { padding: 10px; background: #f8fbff; border: 1px solid #bfdbfe; border-radius: 10px; }
+    .recommend-meta { font-size: 12px; color: var(--text-sub); margin-bottom: 6px; }
+    .recommend-question { font-size: 14px; line-height: 1.5; margin-bottom: 6px; }
+    .recommend-answer { font-size: 13px; color: var(--primary); margin-bottom: 8px; font-weight: 600; }
     
     /* List */
     .q-item { padding: 12px; border-radius: 8px; background: #f8fafc; cursor: pointer; margin-bottom: 8px; position: relative; border: 1px solid transparent; }
@@ -118,6 +132,10 @@
         
         /* Stack main grid */
         .main-grid { display: flex; flex-direction: column; gap: 16px; margin-top: 10px; }
+        .list-card { max-height: none; }
+        .list-card .card-body { max-height: none; }
+        .recommendation-board { grid-column: auto; }
+        .recommend-grid { grid-template-columns: 1fr; }
         
         /* List Card Mobile Behavior */
         .list-card { display: none; }

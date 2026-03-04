@@ -37,6 +37,11 @@ public class GradingController {
         return agentBridge.getAvailableModels();
     }
 
+    @GetMapping("/grading-methods")
+    public List<Map<String, Object>> getGradingMethods() {
+        return agentBridge.getGradingMethods();
+    }
+
     @PostMapping("/grade")
     public GradeResponse grade(@RequestBody GradeRequest request, Principal principal) {
         GradeResponse response = agentBridge.callPythonAgent(request);
@@ -48,7 +53,11 @@ public class GradingController {
             submission.setQuestionText(request.getQuestionText());
             submission.setStandardAnswer(request.getStandardAnswer());
             submission.setStudentAnswer(request.getStudentAnswer());
-            submission.setModelUsed(request.getModel());
+            String modelUsed = request.getModel() != null ? request.getModel() : "default";
+            if (request.getGradingMethod() != null && !request.getGradingMethod().isBlank()) {
+                modelUsed = modelUsed + "|" + request.getGradingMethod();
+            }
+            submission.setModelUsed(modelUsed);
             
             try {
                 if (request.getMaxScore() != null && !request.getMaxScore().isEmpty()) {

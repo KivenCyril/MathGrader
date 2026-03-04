@@ -7,3 +7,9 @@ paddlepaddle
 paddleocr
 matplotlib
 pandas
+# Optional: enable orchestrator.solver_loop.use_langchain_critic
+langchain
+langchain-openai
+sympy
+# Optional OCR backup:
+pix2tex

@@ -1,11 +1,10 @@
-<!doctype html>
+﻿﻿<!doctype html>
 <html lang="zh-Hans">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>小学数学判卷小工具</title>
+  <title>智能数学判卷助手</title>
   <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
-  <!-- MathJax for LaTeX Rendering -->
   <script>
     window.MathJax = {
       tex: {
@@ -21,53 +20,48 @@
 </head>
 <body>
 
-<div id="app" v-cloak class="wrap">
-  <!-- Topbar -->
+<div id="app" class="wrap">
   <header class="topbar">
     <div style="display:flex; align-items:center; gap:12px; flex:1;">
       <div class="logo-icon"><i class="fa-solid fa-pen-nib"></i></div>
       <div>
         <h1 style="font-size:18px; margin:0;">智能判卷助手</h1>
         <p style="font-size:13px; color:var(--text-sub); margin:2px 0 0 0;">
-            <span v-if="username" style="color:var(--primary); font-weight:600;">Hi, {{ username }}</span>
-            <span v-else>AI 驱动的小学数学自动批改系统</span>
+          <span v-if="username" style="color:var(--primary); font-weight:600;">Hi, {{ username }}</span>
+          <span v-else>AI 驱动的小学数学自动批改系统</span>
         </p>
       </div>
     </div>
-    
-    <!-- Mobile Toggle -->
+
     <button class="btn icon-only mobile-toggle" @click="showMobileMenu = !showMobileMenu">
-        <i :class="showMobileMenu ? 'fa-solid fa-xmark' : 'fa-solid fa-bars'"></i>
+      <i :class="showMobileMenu ? 'fa-solid fa-xmark' : 'fa-solid fa-bars'"></i>
     </button>
 
-    <!-- Stats (Desktop) -->
     <div class="stats-group desktop-only" style="display:flex; gap:12px;">
       <div class="stat-pill"><i class="fa-solid fa-list-check"></i> <strong>{{ doneCount }}</strong> / {{ questions.length }}</div>
       <div class="stat-pill"><i class="fa-solid fa-star"></i> <strong>{{ totalScore }}</strong> 分</div>
     </div>
 
-    <!-- Nav Menu -->
     <div :class="['nav-menu', { 'show': showMobileMenu }]">
-      <!-- Mobile Stats -->
       <div class="stats-group mobile-only" style="margin-bottom:16px; display:flex; gap:12px; justify-content:center;">
-          <div class="stat-pill"><i class="fa-solid fa-list-check"></i> <strong>{{ doneCount }}</strong> / {{ questions.length }}</div>
-          <div class="stat-pill"><i class="fa-solid fa-star"></i> <strong>{{ totalScore }}</strong> 分</div>
+        <div class="stat-pill"><i class="fa-solid fa-list-check"></i> <strong>{{ doneCount }}</strong> / {{ questions.length }}</div>
+        <div class="stat-pill"><i class="fa-solid fa-star"></i> <strong>{{ totalScore }}</strong> 分</div>
       </div>
-      
+
       <button @click="logout" class="btn" title="退出登录">
         <i class="fa-solid fa-arrow-right-from-bracket"></i> <span class="mobile-label">退出登录</span>
       </button>
-      
+
       <select v-model="datasetId" @change="onDatasetChange" class="btn">
         <option value="demo">示例题目</option>
         <option v-for="d in datasetList" :key="d.id" :value="d.id">{{ d.name }}</option>
       </select>
-      
+
       <select v-if="levels.length > 0" v-model="selectedLevel" @change="loadDataset" class="btn" style="max-width: 100px;">
         <option value="">全部等级</option>
         <option v-for="l in levels" :key="l" :value="l">{{ l }}</option>
       </select>
-      
+
       <button @click="addCustomQuestion" class="btn primary">
         <i class="fa-solid fa-camera"></i> 拍照/自定义
       </button>
@@ -77,12 +71,10 @@
       <button @click="openHistory" class="btn"><i class="fa-solid fa-clock-rotate-left"></i> 历史</button>
       <button @click="exportData" class="btn"><i class="fa-solid fa-download"></i> 导出</button>
     </div>
-    
-    <!-- Overlay for mobile menu -->
+
     <div v-if="showMobileMenu" class="mobile-overlay" @click="showMobileMenu = false"></div>
   </header>
 
-  <!-- History Modal -->
   <div v-if="showHistoryModal" class="modal-overlay" @click.self="showHistoryModal = false">
     <div class="modal-content">
       <div class="modal-header">
@@ -91,11 +83,9 @@
       </div>
       <div class="modal-body">
         <div v-if="historyLoading" style="text-align:center; padding:20px; color:var(--text-sub);">
-            <i class="fa-solid fa-spinner fa-spin"></i> 正在加载数据...
+          <i class="fa-solid fa-spinner fa-spin"></i> 正在加载数据...
         </div>
-        <div v-else-if="historyList.length === 0" style="text-align:center; padding:20px; color:var(--text-sub);">
-            暂无提交记录
-        </div>
+        <div v-else-if="historyList.length === 0" style="text-align:center; padding:20px; color:var(--text-sub);">暂无提交记录</div>
         <table v-else class="history-table">
           <thead>
             <tr>
@@ -108,15 +98,9 @@
           <tbody>
             <tr v-for="h in historyList" :key="h.id">
               <td style="font-size:12px; color:var(--text-sub);">{{ new Date(h.submittedAt).toLocaleString() }}</td>
-              <td :title="h.questionText" style="max-width:200px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
-                  {{ h.questionText }}
-              </td>
+              <td :title="h.questionText" style="max-width:200px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ h.questionText }}</td>
               <td>{{ h.score }}</td>
-              <td>
-                <span :class="h.correct ? 'tag-ok' : 'tag-bad'">
-                  {{ h.correct ? '正确' : '错误' }}
-                </span>
-              </td>
+              <td><span :class="h.correct ? 'tag-ok' : 'tag-bad'">{{ h.correct ? '正确' : '错误' }}</span></td>
             </tr>
           </tbody>
         </table>
@@ -124,61 +108,51 @@
     </div>
   </div>
 
-  <!-- Main Grid -->
   <div class="main-grid">
-    <!-- List -->
     <div :class="['card', 'list-card', { 'show': showList }]">
       <div class="card-header">
-          <span><i class="fa-solid fa-list-ul"></i> 题目列表</span>
-          <button class="btn icon-only mobile-only" @click="showList = false"><i class="fa-solid fa-xmark"></i></button>
+        <span><i class="fa-solid fa-list-ul"></i> 题目列表</span>
+        <button class="btn icon-only mobile-only" @click="showList = false"><i class="fa-solid fa-xmark"></i></button>
       </div>
       <div class="card-body">
-        <div v-for="(q, i) in displayQuestions" :key="q.id" @click="select(i + page * pageSize); showList = false" 
-             :class="['q-item', { active: idx === (i + page * pageSize) }]">
+        <div v-for="(q, i) in displayQuestions" :key="q.id" @click="select(i + page * pageSize); showList = false" :class="['q-item', { active: idx === (i + page * pageSize) }]">
           <div style="font-weight:600; font-size:13px;">{{ q.id }}</div>
           <div style="font-size:12px; color:var(--text-sub); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ q.text }}</div>
-          <span v-if="records[q.id]" :class="['q-status', records[q.id].isCorrect ? 'ok' : 'bad']">
-            <i :class="records[q.id].isCorrect ? 'fa-solid fa-check' : 'fa-solid fa-xmark'"></i> {{ records[q.id].isCorrect ? '已判对' : '已判错' }}
-          </span>
+          <span v-if="records[q.id]" :class="['q-status', records[q.id].isCorrect ? 'ok' : 'bad']">{{ records[q.id].isCorrect ? '已判对' : '已判错' }}</span>
           <span v-else class="q-status">未判</span>
         </div>
         <div style="display:flex; justify-content:center; gap:10px; margin-top:10px;">
-             <button class="btn" @click="page--" :disabled="page <= 0">上一页</button>
-             <span style="display:flex; align-items:center; font-size:12px;">{{ page + 1 }} / {{ Math.ceil(questions.length / pageSize) }}</span>
-             <button class="btn" @click="page++" :disabled="(page + 1) * pageSize >= questions.length">下一页</button>
+          <button class="btn" @click="page--" :disabled="page <= 0">上一页</button>
+          <span style="display:flex; align-items:center; font-size:12px;">{{ page + 1 }} / {{ Math.max(1, Math.ceil(questions.length / pageSize)) }}</span>
+          <button class="btn" @click="page++" :disabled="(page + 1) * pageSize >= questions.length">下一页</button>
         </div>
       </div>
     </div>
 
-    <!-- Detail -->
     <div class="card">
       <div class="card-header">
         <div style="display:flex; align-items:center; gap:8px;">
-            <button class="btn icon-only mobile-only" @click="showList = !showList" :class="{ 'primary': showList }">
-                <i class="fa-solid fa-list"></i>
-            </button>
-            <span>当前题目 {{ currentQ.id }}</span>
+          <button class="btn icon-only mobile-only" @click="showList = !showList" :class="{ 'primary': showList }"><i class="fa-solid fa-list"></i></button>
+          <span>当前题目 {{ currentQ.id }}</span>
         </div>
         <div style="display:flex; gap:8px;">
-          <button v-if="currentQ.isCustom" class="btn icon-only" @click="editingQ = !editingQ" :title="editingQ ? '预览' : '编辑'">
-            <i :class="editingQ ? 'fa-regular fa-eye' : 'fa-solid fa-pen-to-square'"></i>
-          </button>
+          <button v-if="currentQ.isCustom" class="btn icon-only" @click="editingQ = !editingQ" :title="editingQ ? '预览' : '编辑'"><i :class="editingQ ? 'fa-regular fa-eye' : 'fa-solid fa-pen-to-square'"></i></button>
           <button class="btn icon-only" @click="prev"><i class="fa-solid fa-chevron-left"></i></button>
           <button class="btn icon-only" @click="next"><i class="fa-solid fa-chevron-right"></i></button>
         </div>
       </div>
       <div class="card-body">
         <label style="font-size:13px; color:var(--text-sub); display:block; margin-bottom:6px;">题目内容</label>
-        
+
         <div v-if="currentQ.isCustom && editingQ" style="position:relative;">
-            <textarea v-model="currentQ.text" class="modern-input" rows="6" placeholder="在此输入题目内容，或点击右下角拍照上传..."></textarea>
-            <label for="qOcrInput" class="btn icon-only" style="position:absolute; right:8px; bottom:8px; background:white; border-color:#cbd5e1; color:#64748b; cursor:pointer;" title="拍照/上传题目图片">
-              <i :class="qOcrLoading ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-camera'"></i>
-            </label>
-            <input id="qOcrInput" type="file" accept="image/*" @change="handleQuestionOCR" style="display:none">
+          <textarea v-model="currentQ.text" class="modern-input" rows="6" placeholder="输入题目内容，或点击右下角拍照上传"></textarea>
+          <label for="qOcrInput" class="btn icon-only" style="position:absolute; right:8px; bottom:8px; background:white; border-color:#cbd5e1; color:#64748b; cursor:pointer;" title="拍照/上传题目图片">
+            <i :class="qOcrLoading ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-camera'"></i>
+          </label>
+          <input id="qOcrInput" type="file" accept="image/*" @change="handleQuestionOCR" style="display:none">
         </div>
         <div v-else class="modern-input" style="min-height:150px; font-size:16px; line-height:1.6; white-space: pre-wrap; overflow-y: auto;">{{ currentQ.text }}</div>
-        
+
         <div style="margin-top:20px; padding:12px; border:1px dashed var(--primary-light); border-radius:8px; display:flex; flex-direction:column; gap:10px;">
           <div style="display:flex; justify-content:space-between; align-items:center; width:100%;">
             <span style="font-size:12px; color:var(--text-sub);">标准答案</span>
@@ -186,22 +160,30 @@
               <i :class="showTruth ? 'fa-regular fa-eye-slash' : 'fa-regular fa-eye'"></i> {{ showTruth ? '隐藏' : '查看' }}
             </button>
           </div>
-          
           <div v-if="showTruth">
-             <div v-if="currentQ.isCustom && editingQ" style="display:flex; gap:8px;">
-                 <input type="text" v-model="currentQ.truth" class="modern-input" placeholder="手动输入或点击 AI 生成">
-                 <button class="btn" @click="solveQuestion" :disabled="solving" title="AI 生成答案">
-                    <i :class="solving ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-wand-magic-sparkles'"></i>
-                 </button>
-             </div>
-             <div v-else style="font-family:monospace; font-weight:600; color:var(--primary); font-size:15px;">{{ currentQ.truth || '***' }}</div>
+            <div v-if="currentQ.isCustom && editingQ" style="display:flex; gap:8px;">
+              <input type="text" v-model="currentQ.truth" class="modern-input" placeholder="手动输入或点击 AI 生成">
+              <button class="btn" @click="solveQuestion" :disabled="solving" title="AI 生成答案"><i :class="solving ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-wand-magic-sparkles'"></i></button>
+            </div>
+            <div v-else style="font-family:monospace; font-weight:600; color:var(--primary); font-size:15px;">{{ currentQ.truth || '***' }}</div>
           </div>
           <div v-else style="font-family:monospace; font-weight:600; color:var(--primary); font-size:15px;">***</div>
+        </div>
+
+        <div class="insight-panel">
+          <div class="insight-title"><i class="fa-regular fa-note-sticky"></i> 判卷备注</div>
+          <textarea v-model="note" class="modern-input insight-note" rows="5" placeholder="判卷说明会显示在这里"></textarea>
+        </div>
+
+        <div v-if="comparisonEntries.length" class="insight-panel">
+          <div class="insight-title"><i class="fa-solid fa-code-compare"></i> 方法对比结果</div>
+          <div class="comparison-row" v-for="[methodName, result] in comparisonEntries" :key="methodName">
+            <strong>{{ methodName }}</strong> -> score: {{ result.score }}, correct: {{ result.correct }}
+          </div>
         </div>
       </div>
     </div>
 
-    <!-- Grading -->
     <div class="card">
       <div class="card-header"><i class="fa-solid fa-gavel"></i> 判卷面板</div>
       <div class="card-body" style="display:flex; flex-direction:column; gap:16px;">
@@ -210,10 +192,27 @@
           <label class="switch"><input type="checkbox" v-model="useAI"><span class="slider"></span></label>
         </div>
 
+        <div v-if="useAI" style="display:flex; flex-direction:column; gap:10px; padding:12px; border:1px solid var(--line); border-radius:8px; background:#f8fafc;">
+          <div style="display:flex; gap:10px; align-items:center;">
+            <div style="font-size:12px; color:var(--text-sub); min-width:80px;">判卷方法</div>
+            <select v-model="selectedGradingMethod" class="modern-input" style="height:36px; padding:6px 10px;">
+              <option v-for="m in gradingMethods" :key="m.id" :value="m.id">{{ m.label || m.id }}</option>
+            </select>
+          </div>
+          <div style="display:flex; gap:10px; align-items:center;">
+            <label style="display:flex; align-items:center; gap:6px; font-size:12px; color:var(--text-sub);">
+              <input type="checkbox" v-model="enableMethodCompare"> 对比方法
+            </label>
+            <select v-model="compareMethod" class="modern-input" style="height:36px; padding:6px 10px;" :disabled="!enableMethodCompare || compareMethodOptions.length===0">
+              <option v-for="m in compareMethodOptions" :key="m.id" :value="m.id">{{ m.label || m.id }}</option>
+            </select>
+          </div>
+        </div>
+
         <div>
           <label style="font-size:13px; color:var(--text-sub); display:block; margin-bottom:6px;">学生答案</label>
           <div style="position:relative;">
-            <textarea v-model="studentAns" class="modern-input" rows="3" placeholder="在此输入学生答案，或上传图片识别..."></textarea>
+            <textarea v-model="studentAns" class="modern-input" rows="3" placeholder="输入学生答案，或上传图片识别"></textarea>
             <label for="ocrInput" class="btn icon-only" style="position:absolute; right:8px; bottom:8px; background:white; border-color:#cbd5e1; color:#64748b; cursor:pointer;" title="拍照/上传图片识别">
               <i :class="ocrLoading ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-camera'"></i>
             </label>
@@ -228,8 +227,7 @@
           <button @click="clear" class="btn icon-only"><i class="fa-solid fa-trash-can"></i></button>
         </div>
 
-        <div style="text-align:center; padding:12px; background:#f8fafc; border:1px solid var(--line); border-radius:8px; font-weight:600;"
-             :class="{ 'ok': badgeState==='ok', 'bad': badgeState==='bad' }">
+        <div style="text-align:center; padding:12px; background:#f8fafc; border:1px solid var(--line); border-radius:8px; font-weight:600;" :class="{ 'ok': badgeState==='ok', 'bad': badgeState==='bad' }">
           <span v-if="badgeState==='ok'" style="color:var(--success)"><i class="fa-solid fa-circle-check"></i> 正确</span>
           <span v-else-if="badgeState==='bad'" style="color:var(--danger)"><i class="fa-solid fa-circle-xmark"></i> 错误</span>
           <span v-else style="color:var(--text-sub)">等待判卷</span>
@@ -239,13 +237,29 @@
           <div style="flex:1"><label style="font-size:12px;">得分</label><input type="number" v-model.number="score" class="modern-input"></div>
           <div style="flex:1"><label style="font-size:12px;">满分</label><input type="number" v-model.number="maxScore" class="modern-input"></div>
         </div>
-        
-        <div><label style="font-size:12px;">备注</label><textarea v-model="note" class="modern-input" rows="2"></textarea></div>
+
       </div>
-      
+
       <div style="padding:16px; border-top:1px solid var(--line); display:flex; justify-content:flex-end; gap:10px;">
         <button @click="resetRecord" class="btn">重置</button>
         <button @click="save" class="btn primary">保存记录</button>
+      </div>
+    </div>
+
+    <div v-if="similarQuestions.length" class="card recommendation-board">
+      <div class="card-header" style="justify-content:flex-start; gap:8px;">
+        <i class="fa-solid fa-lightbulb"></i>
+        <span>相似题巩固推荐</span>
+      </div>
+      <div class="card-body">
+        <div class="recommend-grid">
+          <div class="recommend-card" v-for="item in similarQuestions" :key="item.questionId">
+            <div class="recommend-meta">#{{ item.questionId }} | score={{ item.score }}</div>
+            <div class="recommend-question">{{ item.question }}</div>
+            <div class="recommend-answer">答案: {{ item.truth }}</div>
+            <button class="btn" style="font-size:12px; padding:4px 10px;" @click="jumpToSimilarQuestion(item)">跳转此题</button>
+          </div>
+        </div>
       </div>
     </div>
   </div>

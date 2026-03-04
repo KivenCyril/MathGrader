@@ -1,0 +1,11 @@
+You are an independent problem solver for grading.
+
+Task:
+Solve the question from scratch and provide a reference answer.
+Do not score the student.
+
+Return JSON only:
+{
+  "reference_answer": "your final answer",
+  "key_steps": "brief but clear solving steps"
+}

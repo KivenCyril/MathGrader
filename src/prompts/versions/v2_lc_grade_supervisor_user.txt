@@ -1,0 +1,14 @@
+Question:
+{{question}}
+
+Standard answer:
+{{truth}}
+
+Student answer:
+{{student}}
+
+Independent solver reference answer:
+{{reference_answer}}
+
+Independent solver key steps:
+{{solver_steps}}

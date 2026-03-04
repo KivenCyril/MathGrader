@@ -1,5 +1,8 @@
 import requests
 import json
+import math
+import hashlib
+import re
 
 class LLMClient:
     def __init__(self, config=None):
@@ -10,7 +13,10 @@ class LLMClient:
         self.api_key = config.get("api_key")
         self.base_url = config.get("base_url", "https://api.openai.com/v1")
         self.model = config.get("model_name", "gpt-3.5-turbo")
+        self.embedding_model = config.get("embedding_model", self.model)
+        self.embedding_max_batch = config.get("embedding_max_batch")
         self.demo_answer = config.get("demo_answer", "").strip()
+        self._runtime_embedding_batch_limit = {}
 
     def _demo_reply(self, content: str):
         return {
@@ -136,3 +142,85 @@ class LLMClient:
         
         # If loop finishes without returning (max rounds reached)
         return data
+
+    def _hash_embedding(self, text: str, dim: int = 256):
+        """
+        Deterministic local fallback embedding if remote embeddings are unavailable.
+        """
+        vec = [0.0] * dim
+        s = (text or "").strip().lower()
+        if not s:
+            return vec
+        for token in s.split():
+            h = int(hashlib.md5(token.encode("utf-8", errors="ignore")).hexdigest()[:8], 16)
+            idx = h % dim
+            sign = 1.0 if (h % 2 == 0) else -1.0
+            vec[idx] += sign
+        norm = math.sqrt(sum(v * v for v in vec)) or 1.0
+        return [v / norm for v in vec]
+
+    def embeddings(self, texts, model=None):
+        """
+        Return embeddings for a list of strings using OpenAI-compatible embeddings endpoint.
+        """
+        if isinstance(texts, str):
+            texts = [texts]
+        texts = [str(t or "") for t in texts]
+        if not texts:
+            return []
+
+        if not self.api_key:
+            return [self._hash_embedding(t) for t in texts]
+
+        emb_model = model or self.embedding_model or self.model
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "model": emb_model,
+            "input": texts
+        }
+
+        configured_limit = self.embedding_max_batch
+        if configured_limit is not None:
+            try:
+                configured_limit = max(1, int(configured_limit))
+            except Exception:
+                configured_limit = None
+
+        runtime_limit = self._runtime_embedding_batch_limit.get(emb_model)
+        effective_limit = runtime_limit or configured_limit
+        if effective_limit and len(texts) > effective_limit:
+            out = []
+            for i in range(0, len(texts), effective_limit):
+                out.extend(self.embeddings(texts[i:i + effective_limit], model=emb_model))
+            return out
+
+        try:
+            url = f"{self.base_url.rstrip('/')}/embeddings"
+            resp = requests.post(url, headers=headers, json=payload, timeout=60)
+            if resp.status_code != 200:
+                # Some providers enforce strict per-call embedding batch size.
+                if len(texts) > 1:
+                    m = re.search(r"not be larger than\s*(\d+)", resp.text or "", flags=re.IGNORECASE)
+                    if m:
+                        limit = max(1, int(m.group(1)))
+                        self._runtime_embedding_batch_limit[emb_model] = limit
+                        print(f"Embedding batch limit detected for {emb_model}: {limit}. Retrying with split batches.")
+                        out = []
+                        for i in range(0, len(texts), limit):
+                            out.extend(self.embeddings(texts[i:i + limit], model=emb_model))
+                        return out
+                print(f"Embedding API Error: {resp.status_code} - {resp.text}")
+                return [self._hash_embedding(t) for t in texts]
+            data = resp.json()
+            rows = data.get("data", [])
+            if not rows:
+                return [self._hash_embedding(t) for t in texts]
+            # Preserve input order by index.
+            rows_sorted = sorted(rows, key=lambda x: x.get("index", 0))
+            return [r.get("embedding", []) for r in rows_sorted]
+        except Exception as e:
+            print(f"Embedding Call Error ({emb_model}): {e}")
+            return [self._hash_embedding(t) for t in texts]

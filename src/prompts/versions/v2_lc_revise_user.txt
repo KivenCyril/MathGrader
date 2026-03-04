@@ -1,0 +1,8 @@
+Question:
+{{question}}
+
+Draft answer:
+{{draft_answer}}
+
+Supervisor feedback:
+{{feedback}}

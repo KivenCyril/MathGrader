@@ -1,4 +1,4 @@
-﻿models:
+models:
   deepseek:
     api_key: "${DEEPSEEK_API_KEY}"
     base_url: "https://api.deepseek.com"
@@ -18,21 +18,54 @@ ocr:
     api_key: "${BAIDU_OCR_API_KEY}"
     url: "https://aip.baidubce.com/rest/2.0/ocr/v1/general_basic"
 
-agents:
-  solver:
-    model: "qwen"
-    prompt: "v1_solver"
-    tools: ["calculate"]
-  grader:
-    model: "deepseek"
-    prompt: "v1_basic_grader"
-    tools: ["calculate"]
-  reviewer:
-    model: "qwen"
-    prompt: "v1_reviewer"
+mcp:
+  refresh_sec: 90
+  servers:
+    - name: "math"
+      url: "http://127.0.0.1:8787/mcp"
+      enabled: false
+      name_prefix: "math"
+      timeout_sec: 20
+      headers: {}
 
-orchestrator:
-  default_mode: "single"
+langchain:
+  method_id: "langchain_solver_supervisor"
+  max_tool_rounds: 4
+  enable_tools_by_default: true
+  solve_mode: "loop" # single | loop
+  prompts:
+    solve_system: "v2_lc_solve_system"
+    solve_user: "v2_lc_solve_user"
+    critic_system: "v2_lc_critic_system"
+    critic_user: "v2_lc_critic_user"
+    revise_system: "v2_lc_revise_system"
+    revise_user: "v2_lc_revise_user"
+    grade_solver_system: "v2_lc_grade_solver_system"
+    grade_solver_user: "v2_lc_grade_solver_user"
+    grade_supervisor_system: "v2_lc_grade_supervisor_system"
+    grade_supervisor_user: "v2_lc_grade_supervisor_user"
+  solve:
+    solver_model: "qwen"
+    critic_model: "deepseek"
+    loop_rounds: 2
+    tools: ["calculate", "ocr_math", "img2latex", "eval_expr", "verify_step", "find_counterexample", "mcp:*"]
+  grade:
+    solver_model: "qwen"       # role: do the question
+    supervisor_model: "deepseek" # role: supervise verdict
+    tools: ["calculate", "ocr_math", "img2latex", "eval_expr", "verify_step", "find_counterexample", "mcp:*"]
+  recommendation:
+    enabled: true
+    data_root: "data/raw"
+    apply_to_datasets: [] # e.g. ["EduChat-Math-main/data/*", "math23k/*", "ape210k-master/data/*"]
+    top_k: 5
+    recommendation_count: 3
+    min_score: 0.05
+    lexical_blend: 0.35 # final = (1-blend)*vector + blend*lexical
+    vector_candidate_k: 80 # lexical prefilter size before vector rerank
+    model_alias: "qwen"
+    embedding_model: "text-embedding-v4"
+    max_docs: 60000
 
 trace:
   enabled: true
+
