@@ -5,6 +5,7 @@ import com.mathgrader.model.GradeResponse;
 import com.mathgrader.model.Submission;
 import com.mathgrader.repository.SubmissionRepository;
 import com.mathgrader.service.PythonAgentBridgeService;
+import jakarta.transaction.Transactional;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
@@ -94,6 +95,30 @@ public class GradingController {
         }
         
         return submissionRepository.findAllByStudentNameOrderBySubmittedAtDesc(principal.getName());
+    }
+
+    @DeleteMapping("/history")
+    @Transactional
+    public Map<String, Object> clearHistory(Principal principal) {
+        if (principal == null) {
+            return Map.of("ok", false, "deleted", 0, "scope", "none", "message", "Not authenticated");
+        }
+
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        boolean isAdmin = auth != null && auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"));
+
+        long deleted;
+        String scope;
+        if (isAdmin) {
+            deleted = submissionRepository.count();
+            submissionRepository.deleteAll();
+            scope = "all";
+        } else {
+            deleted = submissionRepository.deleteByStudentName(principal.getName());
+            scope = "self";
+        }
+
+        return Map.of("ok", true, "deleted", deleted, "scope", scope);
     }
     
     @PostMapping("/solve")

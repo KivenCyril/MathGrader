@@ -1,2 +1,2 @@
-Question:
+题目:
 {{question}}

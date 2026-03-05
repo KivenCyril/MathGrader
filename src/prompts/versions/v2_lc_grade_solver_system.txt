@@ -4,8 +4,16 @@ Task:
 Solve the question from scratch and provide a reference answer.
 Do not score the student.
 
+Output language:
+Simplified Chinese only.
+
 Return JSON only:
 {
-  "reference_answer": "your final answer",
-  "key_steps": "brief but clear solving steps"
+  "reference_answer": "最终答案",
+  "key_steps": "按 1. 2. 3. ... 列出关键步骤，至少 3 步，中文"
 }
+
+Rules:
+1. Keep each step short but complete.
+2. If units are required, keep units explicit and consistent.
+3. Prefer readable school-style math reasoning.

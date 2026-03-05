@@ -33,6 +33,7 @@ createApp({
       showHistoryModal: false,
       historyList: [],
       historyLoading: false,
+      clearingHistory: false,
       username: '',
       showMobileMenu: false,
       showList: false,
@@ -67,6 +68,9 @@ createApp({
     comparisonEntries() {
       if (!this.lastAIResult || !this.lastAIResult.comparison) return [];
       return Object.entries(this.lastAIResult.comparison);
+    },
+    analysisView() {
+      return this.extractAnalysisView(this.lastAIResult);
     }
   },
   mounted() {
@@ -290,6 +294,91 @@ createApp({
       }
       return parts.join(' | ');
     },
+    escapeHtml(value) {
+      return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    },
+    renderMathText(value) {
+      const escaped = this.escapeHtml(value);
+      const withFraction = escaped.replace(/(\d+)\s*\/\s*(\d+)/g, (_, numerator, denominator) => {
+        return `<span class="frac"><span class="num">${numerator}</span><span class="den">${denominator}</span></span>`;
+      });
+      return withFraction.replace(/\n/g, '<br>');
+    },
+    pickFirstText(...values) {
+      for (const value of values) {
+        let text = '';
+        if (Array.isArray(value)) {
+          text = value.map(item => String(item ?? '').trim()).filter(Boolean).join('\n');
+        } else if (value && typeof value === 'object') {
+          continue;
+        } else {
+          text = String(value ?? '').trim();
+        }
+        if (text) return text;
+      }
+      return '';
+    },
+    extractAnalysisView(result) {
+      if (!result || typeof result !== 'object') return null;
+
+      const details = (result.details && typeof result.details === 'object') ? result.details : {};
+      const supervisor = (details.supervisor_output && typeof details.supervisor_output === 'object') ? details.supervisor_output : {};
+      const solver = (details.solver_output && typeof details.solver_output === 'object') ? details.solver_output : {};
+      const analysis = (supervisor.analysis && typeof supervisor.analysis === 'object') ? supervisor.analysis : {};
+
+      const reason = this.pickFirstText(supervisor.reason, result.reason);
+      const basis = this.pickFirstText(analysis.basis, analysis.judgement_basis);
+      const errorPoint = this.pickFirstText(analysis.error_point, analysis.mistake_point);
+      const correctSolution = this.pickFirstText(analysis.correct_solution, analysis.fix);
+      const suggestion = this.pickFirstText(analysis.suggestion);
+      const keySteps = this.pickFirstText(solver.key_steps);
+      const referenceAnswer = this.pickFirstText(solver.reference_answer);
+
+      if (!reason && !basis && !errorPoint && !correctSolution && !suggestion && !keySteps && !referenceAnswer) {
+        return null;
+      }
+
+      return {
+        verdict: result.correct ? '正确' : '错误',
+        reason,
+        basis,
+        errorPoint,
+        correctSolution,
+        suggestion,
+        keySteps,
+        referenceAnswer
+      };
+    },
+    formatAnalysisNote(result) {
+      const view = this.extractAnalysisView(result);
+      if (!view) {
+        const lines = [];
+        if (result && result.reason) lines.push(result.reason);
+        if (result && result.methodUsed) lines.push(`方法：${result.methodUsed}`);
+        lines.push('(AI)');
+        return lines.join('\n');
+      }
+
+      const lines = [`判定：${view.verdict}`];
+      if (view.reason) lines.push(`结论：${view.reason}`);
+      if (view.basis) lines.push(`判定依据：${view.basis}`);
+      if (view.errorPoint) lines.push(`关键错因：${view.errorPoint}`);
+      if (view.correctSolution) lines.push(`正确做法：${view.correctSolution}`);
+      if (view.keySteps) lines.push(`参考步骤：\n${view.keySteps}`);
+      if (view.referenceAnswer) lines.push(`参考答案：${view.referenceAnswer}`);
+      if (view.suggestion) lines.push(`改进建议：${view.suggestion}`);
+      if (result && result.methodUsed) lines.push(`方法：${result.methodUsed}`);
+
+      const comparisonSummary = this.buildComparisonSummary(result);
+      if (comparisonSummary) lines.push(`对比：${comparisonSummary}`);
+      lines.push('(AI)');
+      return lines.join('\n\n');
+    },
 
     async judge() {
       if(!this.studentAns.trim()) return;
@@ -320,14 +409,7 @@ createApp({
           this.lastAIResult = ret;
           this.similarQuestions = Array.isArray(ret.similarQuestions) ? ret.similarQuestions : [];
           this.score = ret.score;
-
-          const lines = [];
-          if (ret.reason) lines.push(ret.reason);
-          if (ret.methodUsed) lines.push(`method: ${ret.methodUsed}`);
-          const comparisonSummary = this.buildComparisonSummary(ret);
-          if (comparisonSummary) lines.push(`compare: ${comparisonSummary}`);
-          lines.push('(AI)');
-          this.note = lines.join('\n');
+          this.note = this.formatAnalysisNote(ret);
 
           this.save();
         } catch(e) {
@@ -401,6 +483,27 @@ createApp({
         console.error("Fetch history failed", e);
       } finally {
         this.historyLoading = false;
+      }
+    },
+    async clearHistory() {
+      if (this.clearingHistory || this.historyLoading || this.historyList.length === 0) return;
+      const ok = window.confirm("确定要清空历史记录吗？该操作不可恢复。");
+      if (!ok) return;
+
+      this.clearingHistory = true;
+      try {
+        const res = await fetch("/api/agent/history", { method: "DELETE" });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data.ok === false) {
+          throw new Error(data.message || "清空失败");
+        }
+        const deleted = Number(data.deleted || 0);
+        this.historyList = [];
+        alert(`已清空 ${deleted} 条历史记录。`);
+      } catch (e) {
+        alert("清空历史失败: " + e.message);
+      } finally {
+        this.clearingHistory = false;
       }
     },
     async logout() {

@@ -10,4 +10,5 @@ import java.util.List;
 public interface SubmissionRepository extends JpaRepository<Submission, Long> {
     List<Submission> findAllByOrderBySubmittedAtDesc();
     List<Submission> findAllByStudentNameOrderBySubmittedAtDesc(String studentName);
+    long deleteByStudentName(String studentName);
 }

@@ -36,7 +36,19 @@
 
     .insight-panel { margin-top: 14px; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: #f8fbff; }
     .insight-title { font-size: 13px; font-weight: 600; color: var(--text-sub); display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
-    .insight-note { min-height: 110px; background: #fff; resize: vertical; }
+    .analysis-board { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
+    .analysis-chip { display: inline-flex; width: fit-content; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 999px; border: 1px solid var(--line); font-size: 12px; background: #fff; }
+    .analysis-chip-label { color: var(--text-sub); }
+    .analysis-chip.ok { border-color: #bbf7d0; background: #f0fdf4; color: #166534; }
+    .analysis-chip.bad { border-color: #fecaca; background: #fef2f2; color: #991b1b; }
+    .analysis-row { border: 1px solid #dbeafe; background: #fff; border-radius: 8px; padding: 8px 10px; }
+    .analysis-label { font-size: 12px; color: var(--text-sub); margin-bottom: 4px; }
+    .analysis-text { font-size: 14px; line-height: 1.6; color: var(--text-main); white-space: pre-wrap; }
+    .math-rich .frac { display: inline-flex; flex-direction: column; align-items: center; justify-content: center; vertical-align: middle; margin: 0 2px; line-height: 1; }
+    .math-rich .frac .num { display: block; font-size: 0.92em; padding: 0 2px 1px 2px; border-bottom: 1px solid currentColor; }
+    .math-rich .frac .den { display: block; font-size: 0.92em; padding: 1px 2px 0 2px; }
+    .analysis-text.pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; background: #f8fafc; border-radius: 6px; padding: 6px 8px; }
+    .analysis-text.answer { color: #3730a3; font-weight: 600; }
     .comparison-row { font-size: 12px; line-height: 1.6; margin-bottom: 4px; color: var(--text-main); }
 
     .recommendation-board { grid-column: 1 / 4; }

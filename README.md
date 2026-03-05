@@ -1,237 +1,217 @@
-# MathGrader (LangChain + MCP)
+﻿# MathGrader：智能数学解题与判卷系统（LangChain + MCP）
 
-MathGrader now uses `LangChain + MCP` as the main AI runtime.
-The evaluation baseline you requested is preserved:
+## 1. 项目概览
+MathGrader 是一个面向数学题场景的 AI 判卷系统，核心目标是：
+- 自动解题
+- 自动判卷
+- 错题推荐
+- 可评测、可迭代优化
 
-1. `Solve` flow generates an answer.
-2. `Grade` flow judges that answer independently.
-
-Java and Python are still split by responsibility:
-- Java (`backend_java`) handles web pages, user flow, dataset APIs, and proxying.
-- Python (`agent_server.py`) handles AI orchestration and tool execution.
-
----
-
-## Core Features
-
-- LangChain-based agent orchestration.
-- MCP tool integration (multiple servers configurable).
-- Local toolset:
-  - `ocr_math` (PaddleOCR, optional Mathpix fallback)
-  - `img2latex` (pix2tex)
-  - `eval_expr` (SymPy expression evaluation)
-  - `verify_step` (rule-based step validation)
-  - `find_counterexample` (random counterexample search)
-  - `calculate` (basic calculator)
-- Grading with two roles:
-  - `solver_model` solves the question independently.
-  - `supervisor_model` makes the final correctness decision.
-- Wrong-question recommendation with hybrid retrieval (vector + lexical).
+当前工程采用 **Java + Python 双服务架构**：
+- `backend_java`：页面、用户流程、数据集接口、网关转发
+- `agent_server.py`：LangChain Agent 编排、工具调用、判卷与推荐
 
 ---
 
-## Agent Loop Logic
+## 2. 核心能力
+- **循环解题工作流**：`Solver -> Critic -> Revise` 多轮修正
+- **双流程判卷**：一条流程独立做题，一条流程监督判定
+- **工具增强推理**：OCR、表达式求值、步骤校验、反例搜索
+- **错题推荐（Hybrid RAG）**：词法召回 + 向量重排
+- **自动化评测**：一键跑通 `/solve -> /grade`，输出 CSV 与可视化
 
-### Solve Loop (`/solve`)
+---
 
-`/solve` supports `single | loop`, default is `loop`.
+## 3. 系统架构（Architecture）
+```mermaid
+flowchart LR
+    U[用户 / 前端页面] --> J[Java Backend :8080]
+    J --> P[Python Agent :5000]
 
-```text
-Draft = Solver(question)
-for i in 1..N:
-  Critique = Critic(question, Draft)
-  if Critique.pass:
-    break
-  Draft = Solver.revise(question, Draft, Critique.feedback)
-return Draft
+    subgraph PY[Python AI Services]
+      P --> E[LangChain Engine]
+      E --> LLM1[Qwen / DeepSeek]
+      E --> T1[Local Tools]
+      E --> T2[MCP Tools 可选]
+      E --> R[Hybrid Retriever]
+    end
+
+    J --> D[(题库数据 data/raw)]
 ```
 
-Code entry points:
-- `agent_server.py` -> `/solve`
-- `src/langchain_engine/engine.py::solve`
+---
 
-### Grade Dual-Flow (`/grade`)
+## 4. 工作流图解
 
-`/grade` remains a separate flow from `/solve`.
-
-```text
-Reference = GradeSolver(question)
-Verdict = Supervisor(question, truth, student, Reference)
-score = maxScore if Verdict.correct else 0
-if incorrect:
-  similarQuestions = HybridRetriever(question, dataset)
+### 4.1 解题循环（`/solve`）
+```mermaid
+flowchart TD
+    A[输入题目] --> B[Solver 生成初稿]
+    B --> C[Critic 检查]
+    C -->|通过| D[输出答案]
+    C -->|不通过| E[Revise 按反馈修订]
+    E --> C
 ```
 
-Code entry points:
-- `agent_server.py` -> `/grade`
-- `src/langchain_engine/engine.py::grade`
+说明：
+- 模式支持 `single | loop`
+- 默认 `loop`，轮数由 `langchain.solve.loop_rounds` 控制
 
-This is exactly the experimental setup you requested: one flow solves, one flow supervises grading.
+### 4.2 判卷双流程（`/grade`）
+```mermaid
+flowchart TD
+    Q[题目 + 标准答案 + 学生答案] --> S[GradeSolver 独立解题]
+    S --> V[Supervisor 监督判定]
+    V --> C{是否正确}
+    C -->|是| O1[返回 correct=true, score=maxScore]
+    C -->|否| R[触发 Hybrid RAG 推荐]
+    R --> O2[返回错因 + similarQuestions]
+```
+
+说明：
+- 这是你的实验基线：**一个流程做题，一个流程判定**
+
+### 4.3 工具调用循环（模型内部）
+```mermaid
+flowchart LR
+    M[LLM 响应] --> T{是否有 tool calls}
+    T -->|有| X[执行工具并写回结果]
+    X --> M
+    T -->|无| Z[结束本轮调用]
+```
+
+说明：
+- 上限由 `langchain.max_tool_rounds` 控制
 
 ---
 
-## Wrong-Question Recommendation (Hybrid Retrieval)
+## 5. 工具体系（Tools）
 
-Recommendations are triggered only when the result is incorrect.
-Response includes:
-- `similarQuestions`
-- `retrieval` metadata
+### 5.1 本地工具
+| 工具名 | 作用 | 代码位置 |
+|---|---|---|
+| `calculate` | 基础计算器 | `src/tools/calculator.py` |
+| `ocr_math` | OCR 数学文本识别（PaddleOCR，支持 Mathpix 回退） | `src/langchain_engine/local_tools.py` |
+| `img2latex` | 公式图转 LaTeX | `src/langchain_engine/local_tools.py` |
+| `eval_expr` | SymPy 表达式求值/化简 | `src/langchain_engine/local_tools.py` |
+| `verify_step` | 步骤等式校验 | `src/langchain_engine/local_tools.py` |
+| `find_counterexample` | 反例搜索兜底 | `src/langchain_engine/local_tools.py` |
 
-Strategy:
-1. Lexical prefilter for speed.
-2. Embedding rerank on candidate set for precision.
-3. Final score uses:
-   `final = (1 - blend) * vector + blend * lexical`
+### 5.2 工具注册路径
+```mermaid
+flowchart LR
+    A[default_tools.py] --> B[ToolHub]
+    C[local_tools.py] --> D[LangChain Engine]
+    B --> D
+    E[mcp_tool_manager.py] --> B
+```
 
-Implementation:
+提示：你在 `src/tools` 里只看到 `calculate` 是正常现象，其他增强工具在 `local_tools.py`。
+
+---
+
+## 6. 错题推荐（Hybrid RAG）
+```mermaid
+flowchart LR
+    A[错题题干] --> B[词法预召回]
+    B --> C[向量重排]
+    C --> D[融合排序]
+    D --> E[返回相似题 TopK]
+```
+
+融合公式：
+`final_score = (1 - lexical_blend) * vector_score + lexical_blend * lexical_score`
+
+关键实现：
 - `src/langchain_engine/retrieval.py`
 
+关键参数：
+- `lexical_blend`
+- `vector_candidate_k`
+- `top_k / recommendation_count`
+
 ---
 
-## Configuration (`settings.yaml`)
+## 7. 配置说明（`settings.yaml`）
 
-Main sections are `mcp` and `langchain`.
+重点配置块：
+- `mcp`: MCP 服务列表、刷新频率
+- `langchain`: Agent 编排总配置
+- `langchain.solve`: 解题模型、循环轮数、工具列表
+- `langchain.grade`: 做题模型 + 监督模型
+- `langchain.recommendation`: 混合检索参数
 
+示例（节选）：
 ```yaml
-mcp:
-  refresh_sec: 90
-  servers:
-    - name: "math"
-      url: "http://127.0.0.1:8787/mcp"
-      enabled: false
-      name_prefix: "math"
-      timeout_sec: 20
-      headers: {}
-
 langchain:
-  method_id: "langchain_solver_supervisor"
   max_tool_rounds: 4
-  enable_tools_by_default: true
   solve_mode: "loop"
-
-  prompts:
-    solve_system: "v2_lc_solve_system"
-    solve_user: "v2_lc_solve_user"
-    critic_system: "v2_lc_critic_system"
-    critic_user: "v2_lc_critic_user"
-    revise_system: "v2_lc_revise_system"
-    revise_user: "v2_lc_revise_user"
-    grade_solver_system: "v2_lc_grade_solver_system"
-    grade_solver_user: "v2_lc_grade_solver_user"
-    grade_supervisor_system: "v2_lc_grade_supervisor_system"
-    grade_supervisor_user: "v2_lc_grade_supervisor_user"
 
   solve:
     solver_model: "qwen"
     critic_model: "deepseek"
     loop_rounds: 2
-    tools: ["calculate", "ocr_math", "img2latex", "eval_expr", "verify_step", "find_counterexample", "mcp:*"]
 
   grade:
     solver_model: "qwen"
     supervisor_model: "deepseek"
-    tools: ["calculate", "ocr_math", "img2latex", "eval_expr", "verify_step", "find_counterexample", "mcp:*"]
 
   recommendation:
-    enabled: true
-    data_root: "data/raw"
-    apply_to_datasets: []
-    top_k: 5
-    recommendation_count: 3
-    min_score: 0.05
     lexical_blend: 0.35
     vector_candidate_k: 80
-    model_alias: "qwen"
-    embedding_model: "text-embedding-v4"
-    max_docs: 60000
 ```
 
 ---
 
-## Prompt Directory
+## 8. API 总览
 
-All LangChain prompt templates are in:
-- `src/prompts/versions/`
-
-Current templates:
-- `v2_lc_solve_system.txt`
-- `v2_lc_solve_user.txt`
-- `v2_lc_critic_system.txt`
-- `v2_lc_critic_user.txt`
-- `v2_lc_revise_system.txt`
-- `v2_lc_revise_user.txt`
-- `v2_lc_grade_solver_system.txt`
-- `v2_lc_grade_solver_user.txt`
-- `v2_lc_grade_supervisor_system.txt`
-- `v2_lc_grade_supervisor_user.txt`
-
----
-
-## API Overview
-
+### 8.1 Python Agent
 - `GET /models`
 - `GET /grading-methods`
 - `POST /ocr`
 - `POST /solve`
 - `POST /grade`
 
-`/solve` common payload fields:
-- `questionText`
-- `model` (optional)
-- `enableTools` (optional)
-- `mode` = `single | loop` (optional)
-- `maxRounds` (optional)
-
-`/grade` common payload fields:
-- `questionText`
-- `standardAnswer`
-- `studentAnswer`
-- `maxScore`
-- `model` (optional)
-- `enableTools` (optional)
-- `datasetId` (for recommendation)
-- `level` (recommendation filter)
-- `questionId` (exclude current question)
-- `recommendationCount`
-- `retrievalTopK`
+### 8.2 Java 网关（常用）
+- `GET /api/agent/history`：查询提交历史
+- `DELETE /api/agent/history`：清空提交历史（管理员清全部，普通用户清自己）
 
 ---
 
-## Quick Start
+## 9. 快速启动
 
-### Python Agent
-
+### 9.1 Python Agent
 ```bash
 pip install -r requirements.txt
 python agent_server.py
 ```
+默认地址：`http://localhost:5000`
 
-Default: `http://localhost:5000`
-
-### Java Web Backend
-
+### 9.2 Java Backend
 ```bash
 cd backend_java
 mvn spring-boot:run
 ```
-
-Default: `http://localhost:8080`
+默认地址：`http://localhost:8080`
 
 ---
 
-## Evaluation
+## 10. 自动化评测
+```mermaid
+flowchart LR
+    A[读取题目] --> B[调用 /solve]
+    B --> C[调用 /grade]
+    C --> D[汇总准确率/时延]
+    D --> E[导出 CSV + 图表]
+```
 
-The evaluation script keeps the dual-flow baseline:
-- call `/solve`
-- send result to `/grade`
-
-Script:
+脚本位置：
 - `src/evaluation/run_eval.py`
+- `src/evaluation/plot_results.py`
 
 ---
 
-## Current Project Layout
-
+## 11. 目录结构
 ```text
 agent_server.py
 settings.yaml
@@ -248,6 +228,7 @@ src/
     base_client.py
   tools/
     calculator.py
+    default_tools.py
     tool_hub.py
     mcp_tool_manager.py
   services/
@@ -256,13 +237,13 @@ src/
     prompt_service.py
   evaluation/
     run_eval.py
+    plot_results.py
 backend_java/
 ```
 
 ---
 
-## Notes
-
-- If `langchain` is not installed, runtime falls back to OpenAI-compatible `LLMClient` calls.
-- `pix2tex` and `Mathpix` are optional.
-- Hybrid recommendation can still work in lexical fallback mode when vector embedding is unavailable.
+## 12. 说明
+- 未安装 `langchain` 时，会回退到兼容调用路径（`LLMClient`）
+- `pix2tex`、`Mathpix` 为可选依赖
+- MCP 工具需要在 `settings.yaml` 的 `mcp.servers` 中启用

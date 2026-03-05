@@ -458,13 +458,13 @@ class LangChainMathEngine:
         safe_max = float(max_score if max_score is not None else 1.0)
 
         if not q:
-            return {"correct": False, "score": 0, "reason": "Missing question text", "methodUsed": self.method_id}
+            return {"correct": False, "score": 0, "reason": "缺少题目文本。", "methodUsed": self.method_id}
 
         if t and self._answers_equivalent(t, s):
             return {
                 "correct": True,
                 "score": safe_max,
-                "reason": "Equivalent to standard answer.",
+                "reason": "学生答案与标准答案等价。",
                 "methodUsed": self.method_id,
                 "details": {"fast_path": True},
                 "similarQuestions": [],
@@ -534,7 +534,7 @@ class LangChainMathEngine:
         return {
             "correct": correct,
             "score": score,
-            "reason": reason or ("Correct." if correct else "Incorrect."),
+            "reason": reason or ("判定正确。" if correct else "判定错误。"),
             "methodUsed": self.method_id,
             "similarQuestions": similar_questions,
             "retrieval": retrieval_meta,

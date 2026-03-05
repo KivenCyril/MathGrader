@@ -1,14 +1,14 @@
-Question:
+题目:
 {{question}}
 
-Standard answer:
+标准答案:
 {{truth}}
 
-Student answer:
+学生答案:
 {{student}}
 
-Independent solver reference answer:
+独立求解参考答案:
 {{reference_answer}}
 
-Independent solver key steps:
+独立求解关键步骤:
 {{solver_steps}}

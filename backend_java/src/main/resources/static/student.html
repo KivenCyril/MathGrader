@@ -79,7 +79,18 @@
     <div class="modal-content">
       <div class="modal-header">
         <h3>提交历史记录</h3>
-        <button @click="showHistoryModal = false" class="btn icon-only"><i class="fa-solid fa-xmark"></i></button>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <button
+            @click="clearHistory"
+            class="btn"
+            :disabled="historyLoading || clearingHistory || historyList.length === 0"
+            style="height:36px; padding:0 12px; border-color:#fecaca; color:#b91c1c; background:#fff7f7;"
+            title="清空当前历史记录">
+            <i :class="clearingHistory ? 'fa-solid fa-spinner fa-spin' : 'fa-regular fa-trash-can'"></i>
+            清空历史
+          </button>
+          <button @click="showHistoryModal = false" class="btn icon-only"><i class="fa-solid fa-xmark"></i></button>
+        </div>
       </div>
       <div class="modal-body">
         <div v-if="historyLoading" style="text-align:center; padding:20px; color:var(--text-sub);">
@@ -151,7 +162,7 @@
           </label>
           <input id="qOcrInput" type="file" accept="image/*" @change="handleQuestionOCR" style="display:none">
         </div>
-        <div v-else class="modern-input" style="min-height:150px; font-size:16px; line-height:1.6; white-space: pre-wrap; overflow-y: auto;">{{ currentQ.text }}</div>
+        <div v-else class="modern-input math-rich" style="min-height:150px; font-size:16px; line-height:1.6; white-space: pre-wrap; overflow-y: auto;" v-html="renderMathText(currentQ.text)"></div>
 
         <div style="margin-top:20px; padding:12px; border:1px dashed var(--primary-light); border-radius:8px; display:flex; flex-direction:column; gap:10px;">
           <div style="display:flex; justify-content:space-between; align-items:center; width:100%;">
@@ -165,14 +176,55 @@
               <input type="text" v-model="currentQ.truth" class="modern-input" placeholder="手动输入或点击 AI 生成">
               <button class="btn" @click="solveQuestion" :disabled="solving" title="AI 生成答案"><i :class="solving ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-wand-magic-sparkles'"></i></button>
             </div>
-            <div v-else style="font-family:monospace; font-weight:600; color:var(--primary); font-size:15px;">{{ currentQ.truth || '***' }}</div>
+            <div v-else class="math-rich" style="font-family:monospace; font-weight:600; color:var(--primary); font-size:15px;" v-html="renderMathText(currentQ.truth || '***')"></div>
           </div>
           <div v-else style="font-family:monospace; font-weight:600; color:var(--primary); font-size:15px;">***</div>
         </div>
 
         <div class="insight-panel">
-          <div class="insight-title"><i class="fa-regular fa-note-sticky"></i> 判卷备注</div>
-          <textarea v-model="note" class="modern-input insight-note" rows="5" placeholder="判卷说明会显示在这里"></textarea>
+          <div class="insight-title"><i class="fa-regular fa-note-sticky"></i> 判卷解析</div>
+
+          <div v-if="analysisView" class="analysis-board">
+            <div class="analysis-chip" :class="analysisView.verdict === '正确' ? 'ok' : 'bad'">
+              <span class="analysis-chip-label">判定</span>
+              <strong>{{ analysisView.verdict }}</strong>
+            </div>
+
+            <div v-if="analysisView.reason" class="analysis-row">
+              <div class="analysis-label">结论</div>
+              <div class="analysis-text math-rich" v-html="renderMathText(analysisView.reason)"></div>
+            </div>
+
+            <div v-if="analysisView.basis" class="analysis-row">
+              <div class="analysis-label">判定依据</div>
+              <div class="analysis-text math-rich" v-html="renderMathText(analysisView.basis)"></div>
+            </div>
+
+            <div v-if="analysisView.errorPoint" class="analysis-row">
+              <div class="analysis-label">关键错因</div>
+              <div class="analysis-text math-rich" v-html="renderMathText(analysisView.errorPoint)"></div>
+            </div>
+
+            <div v-if="analysisView.correctSolution" class="analysis-row">
+              <div class="analysis-label">正确做法</div>
+              <div class="analysis-text math-rich" v-html="renderMathText(analysisView.correctSolution)"></div>
+            </div>
+
+            <div v-if="analysisView.keySteps" class="analysis-row">
+              <div class="analysis-label">参考步骤</div>
+              <div class="analysis-text pre math-rich" v-html="renderMathText(analysisView.keySteps)"></div>
+            </div>
+
+            <div v-if="analysisView.referenceAnswer" class="analysis-row">
+              <div class="analysis-label">参考答案</div>
+              <div class="analysis-text answer math-rich" v-html="renderMathText(analysisView.referenceAnswer)"></div>
+            </div>
+
+            <div v-if="analysisView.suggestion" class="analysis-row">
+              <div class="analysis-label">改进建议</div>
+              <div class="analysis-text math-rich" v-html="renderMathText(analysisView.suggestion)"></div>
+            </div>
+          </div>
         </div>
 
         <div v-if="comparisonEntries.length" class="insight-panel">
