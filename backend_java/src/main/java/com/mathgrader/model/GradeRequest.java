@@ -17,6 +17,7 @@ public class GradeRequest {
     private String datasetId; // for retrieval from local dataset
     private String level;
     private String questionId;
+    private String questionType;
     private Integer recommendationCount;
     private Integer retrievalTopK;
     private Boolean enableTools;

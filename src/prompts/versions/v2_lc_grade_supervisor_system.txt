@@ -15,15 +15,15 @@ Return JSON only:
   "correct": boolean,
   "reason": "一句中文判定结论",
   "analysis": {
-    "basis": "判定依据（1-2句）",
-    "error_point": "关键错误点；若正确则写“无关键错误”",
-    "correct_solution": "正确做法或关键步骤（2-4句）",
+    "basis": "判定依据，1-2 句",
+    "error_point": "关键错误点；如果正确则写“无关键错误”",
+    "correct_solution": "正确做法或关键步骤，2-4 句",
     "suggestion": "给学生的一句改进建议"
   }
 }
 
 Rules:
 1. Accept mathematically equivalent forms.
-2. If key conditions/units are wrong, mark incorrect.
+2. If key conditions or units are wrong, mark incorrect.
 3. If the answer is wrong, explanation must be specific and actionable.
 4. Focus on correctness; score will be mapped externally.

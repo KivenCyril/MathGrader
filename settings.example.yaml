@@ -7,7 +7,8 @@ models:
   qwen:
     api_key: "${QWEN_API_KEY}"
     base_url: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
-    model_name: "qwen-turbo"
+    model_name: "qwen-flash"
+    embedding_max_batch: 10
 
 roles:
   grader: "deepseek"
@@ -52,6 +53,8 @@ langchain:
   grade:
     solver_model: "qwen"       # role: do the question
     supervisor_model: "deepseek" # role: supervise verdict
+    solver_only_when_truth_missing: true
+    supervisor_tools_when_truth_present: false
     tools: ["calculate", "ocr_math", "img2latex", "eval_expr", "verify_step", "find_counterexample", "mcp:*"]
   recommendation:
     enabled: true
@@ -61,7 +64,7 @@ langchain:
     recommendation_count: 3
     min_score: 0.05
     lexical_blend: 0.35 # final = (1-blend)*vector + blend*lexical
-    vector_candidate_k: 80 # lexical prefilter size before vector rerank
+    vector_candidate_k: 9 # keep query + candidates within one embedding batch
     model_alias: "qwen"
     embedding_model: "text-embedding-v4"
     max_docs: 60000

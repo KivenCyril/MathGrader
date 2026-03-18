@@ -2,10 +2,13 @@ package com.mathgrader.controller;
 
 import com.mathgrader.model.GradeRequest;
 import com.mathgrader.model.GradeResponse;
+import com.mathgrader.service.QuestionPreprocessService;
 import com.mathgrader.model.Submission;
 import com.mathgrader.repository.SubmissionRepository;
 import com.mathgrader.service.PythonAgentBridgeService;
 import jakarta.transaction.Transactional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
@@ -13,24 +16,45 @@ import org.springframework.web.bind.annotation.*;
 import java.security.Principal;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 import org.springframework.web.multipart.MultipartFile;
 
 @RestController
 @RequestMapping("/api/agent")
 public class GradingController {
+    private static final Logger log = LoggerFactory.getLogger(GradingController.class);
 
     private final PythonAgentBridgeService agentBridge;
     private final SubmissionRepository submissionRepository;
+    private final QuestionPreprocessService preprocessService;
 
-    public GradingController(PythonAgentBridgeService agentBridge, SubmissionRepository submissionRepository) {
+    public GradingController(
+            PythonAgentBridgeService agentBridge,
+            SubmissionRepository submissionRepository,
+            QuestionPreprocessService preprocessService
+    ) {
         this.agentBridge = agentBridge;
         this.submissionRepository = submissionRepository;
+        this.preprocessService = preprocessService;
+    }
+
+    private long elapsedMs(long startedAtNanos) {
+        return (System.nanoTime() - startedAtNanos) / 1_000_000;
+    }
+
+    private String newTraceId() {
+        return UUID.randomUUID().toString().replace("-", "").substring(0, 12);
     }
     
     @PostMapping("/ocr")
     public Map<String, String> ocr(@RequestParam("file") MultipartFile file) {
-        return agentBridge.performOcr(file);
+        String traceId = newTraceId();
+        long startedAt = System.nanoTime();
+        log.info("[OCR][{}] request received file={} size={}B", traceId, file.getOriginalFilename(), file.getSize());
+        Map<String, String> response = agentBridge.performOcr(file, traceId);
+        log.info("[OCR][{}] completed in {} ms error={}", traceId, elapsedMs(startedAt), response.get("error"));
+        return response;
     }
     
     @GetMapping("/models")
@@ -45,10 +69,36 @@ public class GradingController {
 
     @PostMapping("/grade")
     public GradeResponse grade(@RequestBody GradeRequest request, Principal principal) {
-        GradeResponse response = agentBridge.callPythonAgent(request);
+        String traceId = newTraceId();
+        long startedAt = System.nanoTime();
+        long saveStartedAt = 0L;
+        var preprocess = preprocessService.preprocess(
+                request.getDatasetId(),
+                request.getQuestionId(),
+                request.getQuestionText(),
+                request.getStandardAnswer()
+        );
+        request.setQuestionText(preprocess.normalizedQuestionText());
+        request.setStandardAnswer(preprocess.normalizedTruth());
+        if (request.getQuestionType() == null || request.getQuestionType().isBlank()) {
+            request.setQuestionType(preprocess.questionType());
+        }
+        log.info(
+                "[Grade][{}] request received user={} questionId={} datasetId={} type={} model={} tools={}",
+                traceId,
+                principal != null ? principal.getName() : "anonymous",
+                request.getQuestionId(),
+                request.getDatasetId(),
+                request.getQuestionType(),
+                request.getModel(),
+                request.getEnableTools()
+        );
+
+        GradeResponse response = agentBridge.callPythonAgent(request, traceId);
         
         // Save submission to database
         try {
+            saveStartedAt = System.nanoTime();
             Submission submission = new Submission();
             submission.setStudentName(principal != null ? principal.getName() : "anonymous");
             submission.setQuestionText(request.getQuestionText());
@@ -77,9 +127,18 @@ public class GradingController {
             
             submissionRepository.save(submission);
         } catch (Exception e) {
-            e.printStackTrace();
+            log.warn("[Grade][{}] submission save failed: {}", traceId, e.getMessage());
             // Continue even if save fails
         }
+        long saveMs = saveStartedAt == 0L ? 0L : elapsedMs(saveStartedAt);
+        log.info(
+                "[Grade][{}] completed in {} ms saveMs={} correct={} score={}",
+                traceId,
+                elapsedMs(startedAt),
+                saveMs,
+                response != null && response.isCorrect(),
+                response != null ? response.getScore() : null
+        );
         
         return response;
     }
@@ -122,8 +181,13 @@ public class GradingController {
     }
     
     @PostMapping("/solve")
-    public Map<String, String> solve(@RequestBody Map<String, Object> payload) {
-        return agentBridge.solveQuestion(payload);
+    public Map<String, Object> solve(@RequestBody Map<String, Object> payload) {
+        String traceId = newTraceId();
+        long startedAt = System.nanoTime();
+        log.info("[Solve][{}] request received mode={} tools={}", traceId, payload.get("mode"), payload.get("enableTools"));
+        Map<String, Object> response = agentBridge.solveQuestion(payload, traceId);
+        log.info("[Solve][{}] completed in {} ms error={}", traceId, elapsedMs(startedAt), response.get("error"));
+        return response;
     }
     
     @GetMapping("/health")

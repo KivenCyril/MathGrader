@@ -38,13 +38,13 @@
     </button>
 
     <div class="stats-group desktop-only" style="display:flex; gap:12px;">
-      <div class="stat-pill"><i class="fa-solid fa-list-check"></i> <strong>{{ doneCount }}</strong> / {{ questions.length }}</div>
+      <div class="stat-pill"><i class="fa-solid fa-list-check"></i> <strong>{{ doneCount }}</strong> / {{ totalQuestions || questions.length }}</div>
       <div class="stat-pill"><i class="fa-solid fa-star"></i> <strong>{{ totalScore }}</strong> 分</div>
     </div>
 
     <div :class="['nav-menu', { 'show': showMobileMenu }]">
       <div class="stats-group mobile-only" style="margin-bottom:16px; display:flex; gap:12px; justify-content:center;">
-        <div class="stat-pill"><i class="fa-solid fa-list-check"></i> <strong>{{ doneCount }}</strong> / {{ questions.length }}</div>
+        <div class="stat-pill"><i class="fa-solid fa-list-check"></i> <strong>{{ doneCount }}</strong> / {{ totalQuestions || questions.length }}</div>
         <div class="stat-pill"><i class="fa-solid fa-star"></i> <strong>{{ totalScore }}</strong> 分</div>
       </div>
 
@@ -119,31 +119,44 @@
     </div>
   </div>
 
-  <div class="main-grid">
-    <div :class="['card', 'list-card', { 'show': showList }]">
-      <div class="card-header">
-        <span><i class="fa-solid fa-list-ul"></i> 题目列表</span>
+  <div :class="['main-grid', { 'list-collapsed': listCollapsed }]">
+    <div :class="['card', 'list-card', { 'show': showList, 'collapsed': listCollapsed }]">
+      <div class="card-header list-header">
+        <div class="list-header-title">
+          <button class="btn icon-only desktop-collapse" @click="listCollapsed = !listCollapsed" :title="listCollapsed ? '展开题目列表' : '折叠题目列表'">
+            <i :class="listCollapsed ? 'fa-solid fa-angles-right' : 'fa-solid fa-angles-left'"></i>
+          </button>
+          <span v-if="!listCollapsed"><i class="fa-solid fa-list-ul"></i> 题目列表</span>
+        </div>
         <button class="btn icon-only mobile-only" @click="showList = false"><i class="fa-solid fa-xmark"></i></button>
       </div>
-      <div class="card-body">
-        <div v-for="(q, i) in displayQuestions" :key="q.id" @click="select(i + page * pageSize); showList = false" :class="['q-item', { active: idx === (i + page * pageSize) }]">
+      <div v-if="!listCollapsed" class="card-body">
+        <div v-for="(q, i) in displayQuestions" :key="q.id" @click="select(i); showList = false" :class="['q-item', { active: idx === i }]">
           <div style="font-weight:600; font-size:13px;">{{ q.id }}</div>
           <div style="font-size:12px; color:var(--text-sub); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ q.text }}</div>
           <span v-if="records[q.id]" :class="['q-status', records[q.id].isCorrect ? 'ok' : 'bad']">{{ records[q.id].isCorrect ? '已判对' : '已判错' }}</span>
           <span v-else class="q-status">未判</span>
         </div>
         <div style="display:flex; justify-content:center; gap:10px; margin-top:10px;">
-          <button class="btn" @click="page--" :disabled="page <= 0">上一页</button>
-          <span style="display:flex; align-items:center; font-size:12px;">{{ page + 1 }} / {{ Math.max(1, Math.ceil(questions.length / pageSize)) }}</span>
-          <button class="btn" @click="page++" :disabled="(page + 1) * pageSize >= questions.length">下一页</button>
+          <button class="btn" @click="goToPage(page - 1)" :disabled="page <= 0 || loading">上一页</button>
+          <span style="display:flex; align-items:center; font-size:12px;">{{ page + 1 }} / {{ totalPages }}</span>
+          <button class="btn" @click="goToPage(page + 1)" :disabled="page + 1 >= totalPages || loading">下一页</button>
         </div>
+      </div>
+      <div v-else class="list-collapsed-body">
+        <div class="list-collapsed-index">{{ page + 1 }}/{{ totalPages }}</div>
+        <div class="list-collapsed-current">{{ currentQ.id || '--' }}</div>
+        <div class="list-collapsed-meta">{{ totalQuestions || questions.length }} 题</div>
       </div>
     </div>
 
-    <div class="card">
+    <div class="card content-card">
       <div class="card-header">
         <div style="display:flex; align-items:center; gap:8px;">
           <button class="btn icon-only mobile-only" @click="showList = !showList" :class="{ 'primary': showList }"><i class="fa-solid fa-list"></i></button>
+          <button v-if="listCollapsed" class="btn icon-only desktop-only" @click="listCollapsed = false" title="展开题目列表">
+            <i class="fa-solid fa-list-ul"></i>
+          </button>
           <span>当前题目 {{ currentQ.id }}</span>
         </div>
         <div style="display:flex; gap:8px;">
@@ -183,6 +196,19 @@
 
         <div class="insight-panel">
           <div class="insight-title"><i class="fa-regular fa-note-sticky"></i> 判卷解析</div>
+
+          <div v-if="judging || activeProgressItems.length" class="progress-board">
+            <div class="progress-headline">
+              {{ judging ? '正在判卷处理中' : ((progressView && progressView.headline) || '处理摘要') }}
+            </div>
+            <div class="progress-item" v-for="item in activeProgressItems" :key="item.stage" :class="item.status">
+              <div class="progress-dot"></div>
+              <div class="progress-body">
+                <div class="progress-label">{{ item.label }}</div>
+                <div v-if="item.detail" class="progress-detail">{{ item.detail }}</div>
+              </div>
+            </div>
+          </div>
 
           <div v-if="analysisView" class="analysis-board">
             <div class="analysis-chip" :class="analysisView.verdict === '正确' ? 'ok' : 'bad'">
@@ -227,89 +253,77 @@
           </div>
         </div>
 
-        <div v-if="comparisonEntries.length" class="insight-panel">
-          <div class="insight-title"><i class="fa-solid fa-code-compare"></i> 方法对比结果</div>
-          <div class="comparison-row" v-for="[methodName, result] in comparisonEntries" :key="methodName">
-            <strong>{{ methodName }}</strong> -> score: {{ result.score }}, correct: {{ result.correct }}
-          </div>
-        </div>
       </div>
     </div>
 
-    <div class="card">
-      <div class="card-header"><i class="fa-solid fa-gavel"></i> 判卷面板</div>
-      <div class="card-body" style="display:flex; flex-direction:column; gap:16px;">
-        <div style="background:linear-gradient(135deg, #f0f9ff, #e0e7ff); border:1px solid #bfdbfe; border-radius:8px; padding:12px; display:flex; justify-content:space-between; align-items:center;">
-          <div style="font-weight:600; color:#1e40af; font-size:14px;"><i class="fa-solid fa-robot"></i> 启用 AI 智能判卷</div>
-          <label class="switch"><input type="checkbox" v-model="useAI"><span class="slider"></span></label>
-        </div>
-
-        <div v-if="useAI" style="display:flex; flex-direction:column; gap:10px; padding:12px; border:1px solid var(--line); border-radius:8px; background:#f8fafc;">
-          <div style="display:flex; gap:10px; align-items:center;">
-            <div style="font-size:12px; color:var(--text-sub); min-width:80px;">判卷方法</div>
-            <select v-model="selectedGradingMethod" class="modern-input" style="height:36px; padding:6px 10px;">
-              <option v-for="m in gradingMethods" :key="m.id" :value="m.id">{{ m.label || m.id }}</option>
-            </select>
+    <div class="right-rail">
+      <div class="card side-card grading-card">
+        <div class="card-header"><i class="fa-solid fa-gavel"></i> 判卷面板</div>
+        <div class="card-body" style="display:flex; flex-direction:column; gap:16px;">
+          <div style="background:linear-gradient(135deg, #f0f9ff, #e0e7ff); border:1px solid #bfdbfe; border-radius:8px; padding:12px; display:flex; justify-content:space-between; align-items:center;">
+            <div style="font-weight:600; color:#1e40af; font-size:14px;"><i class="fa-solid fa-robot"></i> 启用 AI 智能判卷</div>
+            <label class="switch"><input type="checkbox" v-model="useAI"><span class="slider"></span></label>
           </div>
-          <div style="display:flex; gap:10px; align-items:center;">
-            <label style="display:flex; align-items:center; gap:6px; font-size:12px; color:var(--text-sub);">
-              <input type="checkbox" v-model="enableMethodCompare"> 对比方法
-            </label>
-            <select v-model="compareMethod" class="modern-input" style="height:36px; padding:6px 10px;" :disabled="!enableMethodCompare || compareMethodOptions.length===0">
-              <option v-for="m in compareMethodOptions" :key="m.id" :value="m.id">{{ m.label || m.id }}</option>
-            </select>
+
+          <div v-if="useAI" style="display:flex; flex-direction:column; gap:10px; padding:12px; border:1px solid var(--line); border-radius:8px; background:#f8fafc;">
+            <div style="display:flex; gap:10px; align-items:center;">
+              <div style="font-size:12px; color:var(--text-sub); min-width:80px;">判卷方法</div>
+              <select v-model="selectedGradingMethod" class="modern-input" style="height:36px; padding:6px 10px;">
+                <option v-for="m in gradingMethods" :key="m.id" :value="m.id">{{ m.label || m.id }}</option>
+              </select>
+            </div>
           </div>
-        </div>
 
-        <div>
-          <label style="font-size:13px; color:var(--text-sub); display:block; margin-bottom:6px;">学生答案</label>
-          <div style="position:relative;">
-            <textarea v-model="studentAns" class="modern-input" rows="3" placeholder="输入学生答案，或上传图片识别"></textarea>
-            <label for="ocrInput" class="btn icon-only" style="position:absolute; right:8px; bottom:8px; background:white; border-color:#cbd5e1; color:#64748b; cursor:pointer;" title="拍照/上传图片识别">
-              <i :class="ocrLoading ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-camera'"></i>
-            </label>
-            <input id="ocrInput" type="file" accept="image/*" @change="handleOCR" style="display:none">
+          <div>
+            <label style="font-size:13px; color:var(--text-sub); display:block; margin-bottom:6px;">学生答案</label>
+            <div style="position:relative;">
+              <textarea v-model="studentAns" class="modern-input" rows="3" placeholder="输入学生答案，或上传图片识别"></textarea>
+              <label for="ocrInput" class="btn icon-only" style="position:absolute; right:8px; bottom:8px; background:white; border-color:#cbd5e1; color:#64748b; cursor:pointer;" title="拍照/上传图片识别">
+                <i :class="ocrLoading ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-camera'"></i>
+              </label>
+              <input id="ocrInput" type="file" accept="image/*" @change="handleOCR" style="display:none">
+            </div>
           </div>
+
+          <div style="display:flex; gap:10px;">
+            <button @click="judge" class="btn primary" style="flex:1; padding:12px;" :disabled="judging">
+              <i :class="judging ? 'fa-solid fa-circle-notch fa-spin' : 'fa-solid fa-check'"></i> 立即判卷
+            </button>
+            <button @click="clear" class="btn icon-only"><i class="fa-solid fa-trash-can"></i></button>
+          </div>
+
+          <div style="text-align:center; padding:12px; background:#f8fafc; border:1px solid var(--line); border-radius:8px; font-weight:600;" :class="{ 'ok': badgeState==='ok', 'bad': badgeState==='bad' }">
+            <span v-if="badgeState==='ok'" style="color:var(--success)"><i class="fa-solid fa-circle-check"></i> 正确</span>
+            <span v-else-if="badgeState==='bad'" style="color:var(--danger)"><i class="fa-solid fa-circle-xmark"></i> 错误</span>
+            <span v-else style="color:var(--text-sub)">等待判卷</span>
+          </div>
+
+          <div style="display:flex; gap:12px;">
+            <div style="flex:1"><label style="font-size:12px;">得分</label><input type="number" v-model.number="score" class="modern-input"></div>
+            <div style="flex:1"><label style="font-size:12px;">满分</label><input type="number" v-model.number="maxScore" class="modern-input"></div>
+          </div>
+
         </div>
 
-        <div style="display:flex; gap:10px;">
-          <button @click="judge" class="btn primary" style="flex:1; padding:12px;" :disabled="judging">
-            <i :class="judging ? 'fa-solid fa-circle-notch fa-spin' : 'fa-solid fa-check'"></i> 立即判卷
-          </button>
-          <button @click="clear" class="btn icon-only"><i class="fa-solid fa-trash-can"></i></button>
+        <div style="padding:16px; border-top:1px solid var(--line); display:flex; justify-content:flex-end; gap:10px;">
+          <button @click="resetRecord" class="btn">重置</button>
+          <button @click="save" class="btn primary">保存记录</button>
         </div>
-
-        <div style="text-align:center; padding:12px; background:#f8fafc; border:1px solid var(--line); border-radius:8px; font-weight:600;" :class="{ 'ok': badgeState==='ok', 'bad': badgeState==='bad' }">
-          <span v-if="badgeState==='ok'" style="color:var(--success)"><i class="fa-solid fa-circle-check"></i> 正确</span>
-          <span v-else-if="badgeState==='bad'" style="color:var(--danger)"><i class="fa-solid fa-circle-xmark"></i> 错误</span>
-          <span v-else style="color:var(--text-sub)">等待判卷</span>
-        </div>
-
-        <div style="display:flex; gap:12px;">
-          <div style="flex:1"><label style="font-size:12px;">得分</label><input type="number" v-model.number="score" class="modern-input"></div>
-          <div style="flex:1"><label style="font-size:12px;">满分</label><input type="number" v-model.number="maxScore" class="modern-input"></div>
-        </div>
-
       </div>
 
-      <div style="padding:16px; border-top:1px solid var(--line); display:flex; justify-content:flex-end; gap:10px;">
-        <button @click="resetRecord" class="btn">重置</button>
-        <button @click="save" class="btn primary">保存记录</button>
-      </div>
-    </div>
-
-    <div v-if="similarQuestions.length" class="card recommendation-board">
-      <div class="card-header" style="justify-content:flex-start; gap:8px;">
-        <i class="fa-solid fa-lightbulb"></i>
-        <span>相似题巩固推荐</span>
-      </div>
-      <div class="card-body">
-        <div class="recommend-grid">
-          <div class="recommend-card" v-for="item in similarQuestions" :key="item.questionId">
-            <div class="recommend-meta">#{{ item.questionId }} | score={{ item.score }}</div>
-            <div class="recommend-question">{{ item.question }}</div>
-            <div class="recommend-answer">答案: {{ item.truth }}</div>
-            <button class="btn" style="font-size:12px; padding:4px 10px;" @click="jumpToSimilarQuestion(item)">跳转此题</button>
+      <div v-if="similarQuestions.length" class="card recommendation-board">
+        <div class="card-header" style="justify-content:flex-start; gap:8px;">
+          <i class="fa-solid fa-lightbulb"></i>
+          <span>相似题巩固推荐</span>
+        </div>
+        <div class="card-body">
+          <div class="recommend-grid side-recommend-grid">
+            <div class="recommend-card" v-for="item in similarQuestions" :key="item.questionId">
+              <div class="recommend-meta">#{{ item.questionId }} | score={{ item.score }}</div>
+              <div class="recommend-question">{{ item.question }}</div>
+              <div class="recommend-answer">答案: {{ item.truth }}</div>
+              <button class="btn" style="font-size:12px; padding:4px 10px;" @click="jumpToSimilarQuestion(item)">跳转此题</button>
+            </div>
           </div>
         </div>
       </div>

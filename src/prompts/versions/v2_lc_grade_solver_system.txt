@@ -10,7 +10,7 @@ Simplified Chinese only.
 Return JSON only:
 {
   "reference_answer": "最终答案",
-  "key_steps": "按 1. 2. 3. ... 列出关键步骤，至少 3 步，中文"
+  "key_steps": "按 1. 2. 3. ... 列出关键步骤，至少 3 步，使用中文"
 }
 
 Rules:

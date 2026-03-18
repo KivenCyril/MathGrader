@@ -1,6 +1,25 @@
-import json
+﻿import json
+import re
+import time
 from typing import Any, Dict, List, Optional, Tuple
 
+from src.langchain_engine.grading_results import build_rule_based_grade_result, ensure_supervisor_analysis
+from src.langchain_engine.grading_support import (
+    build_mixed_fraction_notes,
+    classify_question_type,
+    evaluate_arithmetic_expression,
+    extract_arithmetic_expression,
+    extract_math_value_expression,
+    has_usable_truth,
+    normalize_arithmetic_text,
+    normalize_choice_answer,
+    normalize_judgment_answer,
+    normalize_question_type,
+    question_type_label,
+    try_rule_based_arithmetic_grade,
+    try_rule_based_choice_grade,
+    try_rule_based_judgment_grade,
+)
 from src.langchain_engine.local_tools import build_local_langchain_tools
 from src.langchain_engine.retrieval import HybridRecommendationService
 from src.llm_clients.base_client import LLMClient
@@ -8,10 +27,9 @@ from src.services.prompt_service import PromptLoader
 from src.tools.tool_hub import ToolHub
 
 try:
-    from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
+    from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
     from langchain_openai import ChatOpenAI
 except Exception:
-    AIMessage = None
     HumanMessage = None
     SystemMessage = None
     ToolMessage = None
@@ -255,6 +273,9 @@ class LangChainMathEngine:
                 out.append({"role": "assistant", "content": content, **extra})
         return out
 
+    def _elapsed_ms(self, started_at: float) -> float:
+        return round((time.perf_counter() - started_at) * 1000.0, 2)
+
     def _invoke_with_tools(
         self,
         model_alias: str,
@@ -263,6 +284,7 @@ class LangChainMathEngine:
         enable_tools: bool,
         temperature: float,
     ) -> Dict[str, Any]:
+        started_at = time.perf_counter()
         cfg = self._get_model_config(model_alias)
         llm = self._build_langchain_model(cfg, temperature)
         all_defs, all_handlers = self._collect_tools()
@@ -270,6 +292,15 @@ class LangChainMathEngine:
         selected_names = self._expand_tool_names(tool_names, all_names) if enable_tools else []
         selected_defs = [all_defs[n] for n in selected_names if n in all_defs]
         selected_handlers = {n: all_handlers[n] for n in selected_names if n in all_handlers}
+        metadata = {
+            "timing_ms": 0.0,
+            "tool_rounds": 0,
+            "tool_call_count": 0,
+            "selected_tool_count": len(selected_names),
+            "selected_tools": selected_names,
+            "used_langchain_runtime": llm is not None,
+            "llm_round_timings_ms": [],
+        }
 
         if llm is None:
             fallback_client = LLMClient(cfg)
@@ -281,24 +312,43 @@ class LangChainMathEngine:
                 max_tool_rounds=self.max_tool_rounds,
             )
             content = ((data.get("choices") or [{}])[0].get("message") or {}).get("content") or ""
-            return {"content": str(content), "tool_trace": [], "model_alias": model_alias}
+            metadata["timing_ms"] = self._elapsed_ms(started_at)
+            perf = dict((data.get("_perf") or {}))
+            if perf:
+                metadata["tool_rounds"] = perf.get("tool_rounds", metadata["tool_rounds"])
+                metadata["tool_call_count"] = perf.get("tool_call_count", metadata["tool_call_count"])
+                metadata["llm_round_timings_ms"] = perf.get("llm_round_timings_ms", metadata["llm_round_timings_ms"])
+                metadata["timing_ms"] = perf.get("timing_ms", metadata["timing_ms"])
+            tool_trace = list(data.get("_tool_trace") or [])
+            return {"content": str(content), "tool_trace": tool_trace, "model_alias": model_alias, "perf": metadata}
 
         if not enable_tools or not selected_defs:
+            llm_started_at = time.perf_counter()
             ai = llm.invoke(messages)
-            return {"content": self._lc_content_to_text(getattr(ai, "content", "")), "tool_trace": [], "model_alias": model_alias}
+            metadata["llm_round_timings_ms"] = [self._elapsed_ms(llm_started_at)]
+            metadata["timing_ms"] = self._elapsed_ms(started_at)
+            return {
+                "content": self._lc_content_to_text(getattr(ai, "content", "")),
+                "tool_trace": [],
+                "model_alias": model_alias,
+                "perf": metadata,
+            }
 
         runner = llm.bind_tools(selected_defs)
         convo = list(messages)
         trace = []
         final_ai = None
 
-        for _ in range(self.max_tool_rounds + 1):
+        for round_idx in range(self.max_tool_rounds + 1):
+            llm_started_at = time.perf_counter()
             ai = runner.invoke(convo)
+            metadata["llm_round_timings_ms"].append(self._elapsed_ms(llm_started_at))
             final_ai = ai
             convo.append(ai)
             tool_calls = getattr(ai, "tool_calls", []) or []
             if not tool_calls:
                 break
+            metadata["tool_rounds"] = round_idx + 1
             for tc in tool_calls:
                 name = str(tc.get("name") or "").strip()
                 args = tc.get("args") or {}
@@ -311,6 +361,7 @@ class LangChainMathEngine:
                     args = {}
 
                 handler = selected_handlers.get(name)
+                tool_started_at = time.perf_counter()
                 if handler is None:
                     result = f"Error: tool {name} not found"
                 else:
@@ -319,11 +370,20 @@ class LangChainMathEngine:
                     except Exception as e:
                         result = f"Error: tool {name} failed: {e}"
 
-                trace.append({"name": name, "args": args, "result": str(result)[:300]})
+                metadata["tool_call_count"] = int(metadata["tool_call_count"]) + 1
+                trace.append(
+                    {
+                        "name": name,
+                        "args": args,
+                        "result": str(result)[:300],
+                        "timing_ms": self._elapsed_ms(tool_started_at),
+                    }
+                )
                 convo.append(self._tool_msg(str(result), str(tc.get("id") or "")))
 
         content = self._lc_content_to_text(getattr(final_ai, "content", "") if final_ai else "")
-        return {"content": content, "tool_trace": trace, "model_alias": model_alias}
+        metadata["timing_ms"] = self._elapsed_ms(started_at)
+        return {"content": content, "tool_trace": trace, "model_alias": model_alias, "perf": metadata}
 
     def _answers_equivalent(self, truth: str, student: str) -> bool:
         t = self._normalize_answer(truth)
@@ -333,8 +393,8 @@ class LangChainMathEngine:
         try:
             from sympy import N, simplify, sympify
 
-            lt = sympify(truth.replace("^", "**"))
-            ls = sympify(student.replace("^", "**"))
+            lt = sympify(str(truth).replace("^", "**"))
+            ls = sympify(str(student).replace("^", "**"))
             diff = simplify(lt - ls)
             if diff == 0:
                 return True
@@ -344,6 +404,222 @@ class LangChainMathEngine:
             return False
         return False
 
+    def _normalize_arithmetic_text(self, text: str) -> str:
+        return normalize_arithmetic_text(text)
+
+    def _extract_arithmetic_expression(self, text: str) -> Optional[str]:
+        return extract_arithmetic_expression(text)
+
+    def _extract_math_value_expression(self, text: str) -> Optional[str]:
+        return extract_math_value_expression(text)
+
+    def _evaluate_arithmetic_expression(self, expr: str) -> Optional[str]:
+        return evaluate_arithmetic_expression(expr)
+
+    def _build_mixed_fraction_notes(self, text: str) -> List[str]:
+        return build_mixed_fraction_notes(text)
+
+    def _normalize_choice_answer(self, text: str) -> str:
+        return normalize_choice_answer(text)
+
+    def _normalize_judgment_answer(self, text: str) -> str:
+        return normalize_judgment_answer(text, self._normalize_answer)
+
+    def _classify_question_type(self, question: str, truth: str, student: str) -> str:
+        return classify_question_type(question, truth, student, normalize_answer=self._normalize_answer)
+
+    def _normalize_question_type(self, value: Any) -> str:
+        return normalize_question_type(value)
+
+    def _question_type_label(self, question_type: str) -> str:
+        return question_type_label(question_type)
+
+    def _has_usable_truth(self, truth: str) -> bool:
+        return has_usable_truth(truth)
+
+    def _build_rule_based_grade_result(
+        self,
+        fast_path_kind: str,
+        expected_answer: str,
+        student_answer_value: str,
+        safe_max: float,
+        correct: bool,
+        trace_id: Optional[str],
+        total_started_at: float,
+        equivalence_started_at: float,
+        key_steps: List[str],
+        question_expr: str = "",
+        student_expr: str = "",
+    ) -> Dict[str, Any]:
+        return build_rule_based_grade_result(
+            method_id=self.method_id,
+            recommender_enabled=self.recommender.enabled,
+            fast_path_kind=fast_path_kind,
+            question_type_label=self._question_type_label(fast_path_kind),
+            expected_answer=expected_answer,
+            student_answer_value=student_answer_value,
+            safe_max=safe_max,
+            correct=correct,
+            trace_id=trace_id,
+            total_started_at=total_started_at,
+            equivalence_started_at=equivalence_started_at,
+            key_steps=key_steps,
+            question_expr=question_expr,
+            student_expr=student_expr,
+            elapsed_ms=self._elapsed_ms,
+        )
+
+    def _ensure_supervisor_analysis(
+        self,
+        supervisor_json: Optional[Dict[str, Any]],
+        correct: bool,
+        truth: str,
+        student: str,
+        reference_answer: str,
+        solver_steps: str,
+    ) -> Dict[str, Any]:
+        return ensure_supervisor_analysis(
+            supervisor_json,
+            correct=correct,
+            truth=truth,
+            student=student,
+            reference_answer=reference_answer,
+            solver_steps=solver_steps,
+        )
+
+    def _try_rule_based_choice_grade(
+        self,
+        truth: str,
+        student: str,
+        safe_max: float,
+        trace_id: Optional[str],
+        total_started_at: float,
+        equivalence_started_at: float,
+    ) -> Optional[Dict[str, Any]]:
+        return try_rule_based_choice_grade(
+            truth=truth,
+            student=student,
+            safe_max=safe_max,
+            trace_id=trace_id,
+            total_started_at=total_started_at,
+            equivalence_started_at=equivalence_started_at,
+            build_result=self._build_rule_based_grade_result,
+        )
+
+    def _try_rule_based_judgment_grade(
+        self,
+        truth: str,
+        student: str,
+        safe_max: float,
+        trace_id: Optional[str],
+        total_started_at: float,
+        equivalence_started_at: float,
+    ) -> Optional[Dict[str, Any]]:
+        return try_rule_based_judgment_grade(
+            truth=truth,
+            student=student,
+            safe_max=safe_max,
+            trace_id=trace_id,
+            total_started_at=total_started_at,
+            equivalence_started_at=equivalence_started_at,
+            normalize_answer=self._normalize_answer,
+            build_result=self._build_rule_based_grade_result,
+        )
+
+    def _try_rule_based_arithmetic_grade(
+        self,
+        question: str,
+        truth: str,
+        student: str,
+        safe_max: float,
+        trace_id: Optional[str],
+        total_started_at: float,
+        equivalence_started_at: float,
+    ) -> Optional[Dict[str, Any]]:
+        return try_rule_based_arithmetic_grade(
+            question=question,
+            truth=truth,
+            student=student,
+            safe_max=safe_max,
+            trace_id=trace_id,
+            total_started_at=total_started_at,
+            equivalence_started_at=equivalence_started_at,
+            answers_equivalent=self._answers_equivalent,
+            build_result=self._build_rule_based_grade_result,
+        )
+
+    def _build_progress_summary(
+        self,
+        perf_stages: List[Dict[str, Any]],
+        retrieval_meta: Dict[str, Any],
+        correct: bool,
+    ) -> Dict[str, Any]:
+        def format_duration_ms(value: Any) -> str:
+            try:
+                seconds = float(value or 0.0) / 1000.0
+            except Exception:
+                seconds = 0.0
+            if seconds < 0.1:
+                return f"{seconds:.2f} 秒"
+            if seconds < 1:
+                return f"{seconds:.2f} 秒"
+            return f"{seconds:.1f} 秒"
+
+        items: List[Dict[str, Any]] = []
+        stage_labels = {
+            "answer_equivalence": "答案快速比对",
+            "grade_solver": "独立求解参考答案",
+            "grade_solver_skipped": "跳过独立求解",
+            "grade_supervisor": "生成判卷结论",
+            "recommendation_retrieval": "检索相似题",
+        }
+
+        for stage in perf_stages:
+            name = str(stage.get("stage") or "")
+            label = stage_labels.get(name)
+            if not label:
+                continue
+
+            timing_ms = float(stage.get("timing_ms") or 0.0)
+            detail = f"耗时 {format_duration_ms(timing_ms)}"
+            if name == "grade_solver_skipped":
+                detail = "已检测到标准答案，直接进入最终判定"
+            elif name in {"grade_solver", "grade_supervisor"}:
+                model = str(stage.get("model") or "").strip()
+                tool_calls = int(stage.get("tool_call_count") or 0)
+                detail = f"模型 {model or 'default'}，工具调用 {tool_calls} 次，耗时 {format_duration_ms(timing_ms)}"
+            elif name == "recommendation_retrieval":
+                matched = int(stage.get("matched") or 0)
+                vector_enabled = bool(stage.get("vector_enabled"))
+                detail = f"候选 {matched} 条，向量重排 {'已启用' if vector_enabled else '未启用'}，耗时 {format_duration_ms(timing_ms)}"
+
+            items.append(
+                {
+                    "stage": name,
+                    "label": label,
+                    "detail": detail,
+                    "status": "done",
+                }
+            )
+
+        if not items:
+            items.append(
+                {
+                    "stage": "completed",
+                    "label": "判卷完成",
+                    "detail": "本次请求未生成可展示的阶段摘要。",
+                    "status": "done",
+                }
+            )
+
+        headline = "判卷已完成"
+        if not correct and retrieval_meta.get("matched"):
+            headline = "判卷已完成，并生成了相似题推荐"
+        return {
+            "headline": headline,
+            "items": items,
+        }
+
     def solve(
         self,
         question: str,
@@ -351,10 +627,12 @@ class LangChainMathEngine:
         enable_tools: Optional[bool] = None,
         mode: Optional[str] = None,
         max_rounds: Optional[int] = None,
+        trace_id: Optional[str] = None,
     ) -> Dict[str, Any]:
+        total_started_at = time.perf_counter()
         q = str(question or "").strip()
         if not q:
-            return {"error": "Missing question text"}
+            return {"error": "缺少题目内容"}
 
         use_tools = self.default_tools_enabled if enable_tools is None else bool(enable_tools)
         solve_mode = str(mode or self.default_solve_mode).strip().lower()
@@ -375,15 +653,29 @@ class LangChainMathEngine:
         )
         answer = first.get("content", "")
         rounds = []
+        first_perf = first.get("perf") or {}
+        perf_stages = [
+            {
+                "stage": "solve_initial",
+                "model": solver_alias,
+                "timing_ms": first_perf.get("timing_ms", 0.0),
+                "tool_call_count": first_perf.get("tool_call_count", 0),
+            }
+        ]
 
         if solve_mode == "single":
             return {
                 "answer": answer,
                 "details": {
                     "mode": "single",
+                    "trace_id": trace_id,
                     "solver_model": solver_alias,
                     "tool_trace": first.get("tool_trace", []),
                     "rounds": [],
+                    "perf": {
+                        "total_ms": self._elapsed_ms(total_started_at),
+                        "stages": perf_stages,
+                    },
                 },
             }
 
@@ -400,12 +692,21 @@ class LangChainMathEngine:
             critic_json = self._parse_json(critic.get("content", ""))
             passed = bool(critic_json.get("pass", False))
             feedback = str(critic_json.get("feedback", "")).strip()
-            rounds.append(
+            critic_perf = critic.get("perf") or {}
+            round_info = {
+                "round": idx + 1,
+                "critic_model": critic_alias,
+                "critic_pass": passed,
+                "critic_feedback": feedback,
+                "critic_timing_ms": critic_perf.get("timing_ms", 0.0),
+            }
+            rounds.append(round_info)
+            perf_stages.append(
                 {
-                    "round": idx + 1,
-                    "critic_model": critic_alias,
-                    "critic_pass": passed,
-                    "critic_feedback": feedback,
+                    "stage": f"critic_round_{idx + 1}",
+                    "model": critic_alias,
+                    "timing_ms": critic_perf.get("timing_ms", 0.0),
+                    "tool_call_count": critic_perf.get("tool_call_count", 0),
                 }
             )
             if passed:
@@ -425,16 +726,31 @@ class LangChainMathEngine:
                 enable_tools=use_tools,
                 temperature=0.2,
             )
+            revised_perf = revised.get("perf") or {}
+            round_info["revise_timing_ms"] = revised_perf.get("timing_ms", 0.0)
+            perf_stages.append(
+                {
+                    "stage": f"revise_round_{idx + 1}",
+                    "model": solver_alias,
+                    "timing_ms": revised_perf.get("timing_ms", 0.0),
+                    "tool_call_count": revised_perf.get("tool_call_count", 0),
+                }
+            )
             answer = revised.get("content", "")
 
         return {
             "answer": answer,
             "details": {
                 "mode": "loop",
+                "trace_id": trace_id,
                 "solver_model": solver_alias,
                 "critic_model": critic_alias,
                 "tool_trace": first.get("tool_trace", []),
                 "rounds": rounds,
+                "perf": {
+                    "total_ms": self._elapsed_ms(total_started_at),
+                    "stages": perf_stages,
+                },
             },
         }
 
@@ -449,24 +765,38 @@ class LangChainMathEngine:
         dataset_id: Optional[str] = None,
         level: Optional[str] = None,
         question_id: Optional[str] = None,
+        question_type: Optional[str] = None,
         recommendation_count: Optional[int] = None,
         retrieval_top_k: Optional[int] = None,
+        trace_id: Optional[str] = None,
     ) -> Dict[str, Any]:
+        total_started_at = time.perf_counter()
         q = str(question or "").strip()
         t = str(truth or "").strip()
         s = str(student or "").strip()
         safe_max = float(max_score if max_score is not None else 1.0)
 
         if not q:
-            return {"correct": False, "score": 0, "reason": "缺少题目文本。", "methodUsed": self.method_id}
+            return {"correct": False, "score": 0.0, "reason": "缺少题目内容。", "methodUsed": self.method_id}
 
+        equivalence_started_at = time.perf_counter()
         if t and self._answers_equivalent(t, s):
             return {
                 "correct": True,
                 "score": safe_max,
-                "reason": "学生答案与标准答案等价。",
+                "reason": "学生答案与参考答案等价。",
                 "methodUsed": self.method_id,
-                "details": {"fast_path": True},
+                "details": {
+                    "fast_path": True,
+                    "fast_path_kind": "answer_equivalence",
+                    "trace_id": trace_id,
+                    "question_type": self._normalize_question_type(question_type) or self._classify_question_type(q, t, s),
+                    "perf": {
+                        "total_ms": self._elapsed_ms(total_started_at),
+                        "answer_equivalence_ms": self._elapsed_ms(equivalence_started_at),
+                        "stages": [],
+                    },
+                },
                 "similarQuestions": [],
                 "retrieval": {
                     "enabled": self.recommender.enabled,
@@ -476,23 +806,82 @@ class LangChainMathEngine:
                 },
             }
 
+        question_type = self._normalize_question_type(question_type) or self._classify_question_type(q, t, s)
+        if question_type == "choice":
+            result = self._try_rule_based_choice_grade(t, s, safe_max, trace_id, total_started_at, equivalence_started_at)
+            if result:
+                result["retrieval"]["datasetId"] = dataset_id
+                return result
+        if question_type == "judgment":
+            result = self._try_rule_based_judgment_grade(t, s, safe_max, trace_id, total_started_at, equivalence_started_at)
+            if result:
+                result["retrieval"]["datasetId"] = dataset_id
+                return result
+        if question_type == "arithmetic":
+            result = self._try_rule_based_arithmetic_grade(q, t, s, safe_max, trace_id, total_started_at, equivalence_started_at)
+            if result:
+                result["retrieval"]["datasetId"] = dataset_id
+                return result
+
         use_tools = self.default_tools_enabled if enable_tools is None else bool(enable_tools)
+        grade_cfg = (self.config.get("langchain", {}) or {}).get("grade", {}) or {}
+        solver_only_when_truth_missing = bool(grade_cfg.get("solver_only_when_truth_missing", True))
+        supervisor_tools_when_truth_present = bool(grade_cfg.get("supervisor_tools_when_truth_present", False))
+        has_usable_truth = self._has_usable_truth(t)
+        skip_solver = solver_only_when_truth_missing and has_usable_truth
         solver_alias = self._get_model_alias("grade", "solver_model", "reviewer", override=model_alias)
         supervisor_alias = self._get_model_alias("grade", "supervisor_model", "grader")
         tool_names = self._resolve_tool_names("grade")
+        perf_stages = [
+            {
+                "stage": "answer_equivalence",
+                "timing_ms": self._elapsed_ms(equivalence_started_at),
+            }
+        ]
 
-        solver_sys = self._safe_prompt("grade_solver_system")
-        solver_user = self._safe_prompt("grade_solver_user", question=q)
-        solver_res = self._invoke_with_tools(
-            solver_alias,
-            [self._system_msg(solver_sys), self._human_msg(solver_user)],
-            tool_names=tool_names,
-            enable_tools=use_tools,
-            temperature=0.1,
-        )
-        solver_json = self._parse_json(solver_res.get("content", ""))
-        reference_answer = str(solver_json.get("reference_answer") or "").strip()
-        solver_steps = str(solver_json.get("key_steps") or "").strip()
+        solver_json: Dict[str, Any] = {}
+        solver_res: Dict[str, Any] = {"tool_trace": [], "perf": {}}
+        reference_answer = ""
+        solver_steps = ""
+        if skip_solver:
+            reference_answer = t
+            solver_json = {
+                "reference_answer": reference_answer,
+                "key_steps": "",
+                "skipped": True,
+                "skip_reason": "standard_truth_available",
+            }
+            perf_stages.append(
+                {
+                    "stage": "grade_solver_skipped",
+                    "model": solver_alias,
+                    "timing_ms": 0.0,
+                    "tool_call_count": 0,
+                    "reason": "standard_truth_available",
+                }
+            )
+        else:
+            solver_sys = self._safe_prompt("grade_solver_system")
+            solver_user = self._safe_prompt("grade_solver_user", question=q)
+            solver_res = self._invoke_with_tools(
+                solver_alias,
+                [self._system_msg(solver_sys), self._human_msg(solver_user)],
+                tool_names=tool_names,
+                enable_tools=use_tools,
+                temperature=0.1,
+            )
+            solver_json = self._parse_json(solver_res.get("content", ""))
+            reference_answer = str(solver_json.get("reference_answer") or "").strip()
+            solver_steps = str(solver_json.get("key_steps") or "").strip()
+            solver_perf = solver_res.get("perf") or {}
+            perf_stages.append(
+                {
+                    "stage": "grade_solver",
+                    "model": solver_alias,
+                    "timing_ms": solver_perf.get("timing_ms", 0.0),
+                    "tool_call_count": solver_perf.get("tool_call_count", 0),
+                }
+            )
 
         supervisor_sys = self._safe_prompt("grade_supervisor_system")
         supervisor_user = self._safe_prompt(
@@ -503,16 +892,45 @@ class LangChainMathEngine:
             reference_answer=reference_answer,
             solver_steps=solver_steps,
         )
+        supervisor_enable_tools = use_tools and (not has_usable_truth or supervisor_tools_when_truth_present)
         supervisor_res = self._invoke_with_tools(
             supervisor_alias,
             [self._system_msg(supervisor_sys), self._human_msg(supervisor_user)],
             tool_names=tool_names,
-            enable_tools=use_tools,
+            enable_tools=supervisor_enable_tools,
             temperature=0.0,
         )
         supervisor_json = self._parse_json(supervisor_res.get("content", ""))
+        supervisor_perf = supervisor_res.get("perf") or {}
+        perf_stages.append(
+            {
+                "stage": "grade_supervisor",
+                "model": supervisor_alias,
+                "timing_ms": supervisor_perf.get("timing_ms", 0.0),
+                "tool_call_count": supervisor_perf.get("tool_call_count", 0),
+            }
+        )
+        raw_supervisor_content = str(supervisor_res.get("content") or "").strip()
+        if not supervisor_json and raw_supervisor_content:
+            supervisor_json = {
+                "reason": raw_supervisor_content,
+                "analysis": {
+                    "basis": raw_supervisor_content,
+                    "error_point": "",
+                    "correct_solution": solver_steps,
+                    "suggestion": "",
+                },
+            }
         correct = bool(supervisor_json.get("correct", False))
-        reason = str(supervisor_json.get("reason") or "").strip()
+        supervisor_json = self._ensure_supervisor_analysis(
+            supervisor_json=supervisor_json,
+            correct=correct,
+            truth=t,
+            student=s,
+            reference_answer=reference_answer,
+            solver_steps=solver_steps,
+        )
+        reason = str(supervisor_json.get("reason") or raw_supervisor_content).strip()
         score = safe_max if correct else 0.0
         similar_questions: List[Dict[str, Any]] = []
         retrieval_meta: Dict[str, Any] = {
@@ -522,6 +940,7 @@ class LangChainMathEngine:
             "matched": 0,
         }
         if not correct:
+            retrieval_started_at = time.perf_counter()
             similar_questions, retrieval_meta = self.recommender.recommend(
                 dataset_id=dataset_id,
                 query_question=q,
@@ -530,20 +949,35 @@ class LangChainMathEngine:
                 top_k=retrieval_top_k,
                 recommendation_count=recommendation_count,
             )
+            perf_stages.append(
+                {
+                    "stage": "recommendation_retrieval",
+                    "timing_ms": self._elapsed_ms(retrieval_started_at),
+                    "matched": retrieval_meta.get("matched", 0),
+                    "vector_enabled": retrieval_meta.get("vectorEnabled", False),
+                }
+            )
 
         return {
             "correct": correct,
             "score": score,
-            "reason": reason or ("判定正确。" if correct else "判定错误。"),
+            "reason": reason or ("学生答案正确。" if correct else "学生答案错误。"),
             "methodUsed": self.method_id,
             "similarQuestions": similar_questions,
             "retrieval": retrieval_meta,
             "details": {
+                "trace_id": trace_id,
+                "question_type": question_type,
                 "solver_model": solver_alias,
                 "supervisor_model": supervisor_alias,
                 "solver_output": solver_json,
                 "supervisor_output": supervisor_json,
                 "solver_tool_trace": solver_res.get("tool_trace", []),
                 "supervisor_tool_trace": supervisor_res.get("tool_trace", []),
+                "progress_summary": self._build_progress_summary(perf_stages, retrieval_meta, correct),
+                "perf": {
+                    "total_ms": self._elapsed_ms(total_started_at),
+                    "stages": perf_stages,
+                },
             },
         }

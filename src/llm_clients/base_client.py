@@ -3,6 +3,7 @@ import json
 import math
 import hashlib
 import re
+import time
 
 class LLMClient:
     def __init__(self, config=None):
@@ -17,6 +18,7 @@ class LLMClient:
         self.embedding_max_batch = config.get("embedding_max_batch")
         self.demo_answer = config.get("demo_answer", "").strip()
         self._runtime_embedding_batch_limit = {}
+        self._logged_embedding_batch_limits = set()
 
     def _demo_reply(self, content: str):
         return {
@@ -47,11 +49,23 @@ class LLMClient:
         return False
 
     def chat_completion(self, messages, temperature=0.7, tools=None, tool_map=None, max_tool_rounds=3):
+        started_at = time.perf_counter()
+        perf = {
+            "timing_ms": 0.0,
+            "tool_rounds": 0,
+            "tool_call_count": 0,
+            "llm_round_timings_ms": [],
+        }
+        tool_trace = []
         if not self.api_key:
             # Fallback mock for demo if no API key
             wants_json = self._expects_json(messages)
             content = self._demo_grade_json() if wants_json else self._demo_solve_text()
-            return self._demo_reply(content)
+            data = self._demo_reply(content)
+            perf["timing_ms"] = round((time.perf_counter() - started_at) * 1000.0, 2)
+            data["_perf"] = perf
+            data["_tool_trace"] = tool_trace
+            return data
 
         headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -82,6 +96,7 @@ class LLMClient:
 
             try:
                 url = f"{self.base_url.rstrip('/')}/chat/completions"
+                llm_started_at = time.perf_counter()
                 resp = requests.post(url, headers=headers, json=payload, timeout=60)
                 
                 # If 400 and we used JSON mode, try again without it
@@ -89,6 +104,7 @@ class LLMClient:
                     print(f"LLM API 400 Error with JSON mode. Retrying without response_format...")
                     del payload["response_format"]
                     resp = requests.post(url, headers=headers, json=payload, timeout=60)
+                perf["llm_round_timings_ms"].append(round((time.perf_counter() - llm_started_at) * 1000.0, 2))
                 
                 if resp.status_code != 200:
                     print(f"LLM API Error: {resp.status_code} - {resp.text}")
@@ -101,6 +117,7 @@ class LLMClient:
                 
                 # Check for tool calls
                 if message.get('tool_calls'):
+                    perf["tool_rounds"] = int(perf["tool_rounds"]) + 1
                     # Append assistant message with tool calls
                     current_messages.append(message)
                     
@@ -109,11 +126,19 @@ class LLMClient:
                         fn_args = json.loads(tool_call['function']['arguments'])
                         
                         # Execute tool
+                        tool_started_at = time.perf_counter()
                         if tool_map and fn_name in tool_map:
                             print(f"[Tool] Calling {fn_name}({fn_args})")
                             tool_result = tool_map[fn_name](**fn_args)
                         else:
                             tool_result = f"Error: Tool {fn_name} not found"
+                        perf["tool_call_count"] = int(perf["tool_call_count"]) + 1
+                        tool_trace.append({
+                            "name": fn_name,
+                            "args": fn_args,
+                            "result": str(tool_result)[:300],
+                            "timing_ms": round((time.perf_counter() - tool_started_at) * 1000.0, 2),
+                        })
                             
                         # Append tool result
                         current_messages.append({
@@ -124,11 +149,14 @@ class LLMClient:
                     # Loop continues to send tool results back to LLM
                 else:
                     # Final response (no more tools)
+                    perf["timing_ms"] = round((time.perf_counter() - started_at) * 1000.0, 2)
+                    data["_perf"] = perf
+                    data["_tool_trace"] = tool_trace
                     return data
 
             except Exception as e:
                 print(f"LLM Call Error ({self.model}): {e}")
-                return {
+                data = {
                     "choices": [{
                         "message": {
                             "content": json.dumps({
@@ -139,8 +167,15 @@ class LLMClient:
                         }
                     }]
                 }
+                perf["timing_ms"] = round((time.perf_counter() - started_at) * 1000.0, 2)
+                data["_perf"] = perf
+                data["_tool_trace"] = tool_trace
+                return data
         
         # If loop finishes without returning (max rounds reached)
+        perf["timing_ms"] = round((time.perf_counter() - started_at) * 1000.0, 2)
+        data["_perf"] = perf
+        data["_tool_trace"] = tool_trace
         return data
 
     def _hash_embedding(self, text: str, dim: int = 256):
@@ -207,7 +242,9 @@ class LLMClient:
                     if m:
                         limit = max(1, int(m.group(1)))
                         self._runtime_embedding_batch_limit[emb_model] = limit
-                        print(f"Embedding batch limit detected for {emb_model}: {limit}. Retrying with split batches.")
+                        if emb_model not in self._logged_embedding_batch_limits:
+                            print(f"Embedding batch limit detected for {emb_model}: {limit}. Retrying with split batches.")
+                            self._logged_embedding_batch_limits.add(emb_model)
                         out = []
                         for i in range(0, len(texts), limit):
                             out.extend(self.embeddings(texts[i:i + limit], model=emb_model))

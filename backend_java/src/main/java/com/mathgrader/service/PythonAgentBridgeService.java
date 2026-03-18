@@ -1,23 +1,24 @@
 package com.mathgrader.service;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mathgrader.model.GradeRequest;
 import com.mathgrader.model.GradeResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.MediaType;
+import org.springframework.http.client.MultipartBodyBuilder;
 import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.reactive.function.BodyInserters;
 import org.springframework.web.reactive.function.client.WebClient;
-import reactor.core.publisher.Mono;
 
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
-import org.springframework.http.MediaType;
-import org.springframework.http.client.MultipartBodyBuilder;
-import org.springframework.web.multipart.MultipartFile;
-import org.springframework.web.reactive.function.BodyInserters;
 
 @Service
 public class PythonAgentBridgeService {
+    private static final Logger log = LoggerFactory.getLogger(PythonAgentBridgeService.class);
 
     private final WebClient webClient;
     
@@ -28,17 +29,26 @@ public class PythonAgentBridgeService {
         this.webClient = webClientBuilder.build();
     }
 
-    public GradeResponse callPythonAgent(GradeRequest request) {
+    private long elapsedMs(long startedAtNanos) {
+        return (System.nanoTime() - startedAtNanos) / 1_000_000;
+    }
+
+    public GradeResponse callPythonAgent(GradeRequest request, String traceId) {
+        long startedAt = System.nanoTime();
         try {
-            return webClient.post()
+            GradeResponse response = webClient.post()
                     .uri(pythonAgentUrl + "/grade")
+                    .header("X-Trace-Id", traceId)
                     .bodyValue(request)
                     .retrieve()
                     .bodyToMono(GradeResponse.class)
                     .timeout(Duration.ofSeconds(120)) 
-                    .block(); 
+                    .block();
+            log.info("[Bridge][{}] /grade completed in {} ms", traceId, elapsedMs(startedAt));
+            return response;
                     
         } catch (Exception e) {
+            log.warn("[Bridge][{}] /grade failed after {} ms: {}", traceId, elapsedMs(startedAt), e.getMessage());
             GradeResponse error = new GradeResponse();
             error.setCorrect(false);
             error.setScore(0);
@@ -47,34 +57,44 @@ public class PythonAgentBridgeService {
         }
     }
 
-    public Map<String, String> performOcr(MultipartFile file) {
+    public Map<String, String> performOcr(MultipartFile file, String traceId) {
+        long startedAt = System.nanoTime();
         try {
             MultipartBodyBuilder builder = new MultipartBodyBuilder();
             builder.part("file", file.getResource());
 
-            return webClient.post()
+            Map<String, String> response = webClient.post()
                     .uri(pythonAgentUrl + "/ocr")
+                    .header("X-Trace-Id", traceId)
                     .contentType(MediaType.MULTIPART_FORM_DATA)
                     .body(BodyInserters.fromMultipartData(builder.build()))
                     .retrieve()
                     .bodyToMono(Map.class)
                     .timeout(Duration.ofSeconds(30))
                     .block();
+            log.info("[Bridge][{}] /ocr completed in {} ms", traceId, elapsedMs(startedAt));
+            return response;
         } catch (Exception e) {
+            log.warn("[Bridge][{}] /ocr failed after {} ms: {}", traceId, elapsedMs(startedAt), e.getMessage());
             return Map.of("error", "OCR Error: " + e.getMessage());
         }
     }
 
-    public Map<String, String> solveQuestion(Map<String, Object> payload) {
+    public Map<String, Object> solveQuestion(Map<String, Object> payload, String traceId) {
+        long startedAt = System.nanoTime();
         try {
-            return webClient.post()
+            Map<String, Object> response = webClient.post()
                     .uri(pythonAgentUrl + "/solve")
+                    .header("X-Trace-Id", traceId)
                     .bodyValue(payload)
                     .retrieve()
                     .bodyToMono(Map.class)
                     .timeout(Duration.ofSeconds(120))
                     .block();
+            log.info("[Bridge][{}] /solve completed in {} ms", traceId, elapsedMs(startedAt));
+            return response;
         } catch (Exception e) {
+            log.warn("[Bridge][{}] /solve failed after {} ms: {}", traceId, elapsedMs(startedAt), e.getMessage());
             return Map.of("error", "Solver Error: " + e.getMessage());
         }
     }

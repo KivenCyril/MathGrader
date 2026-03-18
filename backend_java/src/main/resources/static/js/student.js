@@ -18,6 +18,7 @@ createApp({
       judging: false,
       page: 0,
       pageSize: 50,
+      totalQuestions: 0,
 
       // Current Edit State
       studentAns: '',
@@ -37,24 +38,28 @@ createApp({
       username: '',
       showMobileMenu: false,
       showList: false,
+      listCollapsed: false,
 
       // Configurable grading methods from backend.
       gradingMethods: [],
       selectedGradingMethod: 'small_fast',
-      enableMethodCompare: false,
-      compareMethod: '',
 
       // Latest AI result extras
       lastAIResult: null,
-      similarQuestions: []
+      similarQuestions: [],
+      judgingProgressTimer: null,
+      judgingProgressStartedAt: 0,
+      judgingProgressItems: []
     }
   },
   computed: {
     displayQuestions() {
-      const start = this.page * this.pageSize;
-      return this.questions.slice(start, start + this.pageSize);
+      return this.questions;
     },
     currentQ() { return this.questions[this.idx] || {} },
+    totalPages() {
+      return Math.max(1, Math.ceil(this.totalQuestions / this.pageSize));
+    },
     doneCount() { return Object.keys(this.records).length },
     totalScore() { return Object.values(this.records).reduce((a,b)=>a+(b.score||0), 0) },
     badgeState() {
@@ -62,29 +67,25 @@ createApp({
       if(r) return r.isCorrect ? 'ok' : 'bad';
       return 'idle';
     },
-    compareMethodOptions() {
-      return this.gradingMethods.filter(m => m.id !== this.selectedGradingMethod);
-    },
-    comparisonEntries() {
-      if (!this.lastAIResult || !this.lastAIResult.comparison) return [];
-      return Object.entries(this.lastAIResult.comparison);
-    },
     analysisView() {
       return this.extractAnalysisView(this.lastAIResult);
+    },
+    progressView() {
+      return this.extractProgressView(this.lastAIResult);
+    },
+    activeProgressItems() {
+      if (this.judging) return this.judgingProgressItems;
+      return (this.progressView && Array.isArray(this.progressView.items)) ? this.progressView.items : [];
     }
   },
   mounted() {
     this.useAI = localStorage.getItem("useAI") === "true";
+    this.listCollapsed = localStorage.getItem("studentListCollapsed") === "true";
     this.init();
   },
   watch: {
     useAI(v) { localStorage.setItem("useAI", v); },
-    selectedGradingMethod() {
-      if (this.compareMethod === this.selectedGradingMethod) {
-        const fallback = this.compareMethodOptions[0];
-        this.compareMethod = fallback ? fallback.id : '';
-      }
-    }
+    listCollapsed(v) { localStorage.setItem("studentListCollapsed", v ? "true" : "false"); }
   },
   methods: {
     // Use Vue's nextTick to ensure DOM is updated before MathJax rendering
@@ -121,8 +122,6 @@ createApp({
           this.gradingMethods = methods;
           const defaultMethod = methods.find(m => m.isDefault) || methods[0];
           this.selectedGradingMethod = defaultMethod.id;
-          const compareFallback = methods.find(m => m.id !== defaultMethod.id);
-          this.compareMethod = compareFallback ? compareFallback.id : '';
           return;
         }
       } catch (e) {
@@ -134,7 +133,6 @@ createApp({
         { id: 'rag_ape', kind: 'rag_ape', label: 'RAG (APE)', isDefault: false }
       ];
       this.selectedGradingMethod = 'small_fast';
-      this.compareMethod = 'rag_ape';
     },
     async onDatasetChange() {
       this.levels = [];
@@ -160,6 +158,7 @@ createApp({
       };
 
       this.questions.unshift(newQ);
+      this.totalQuestions = this.questions.length;
       this.page = 0;
       this.idx = 0;
       this.records = {};
@@ -216,29 +215,48 @@ createApp({
         e.target.value = "";
       }
     },
-    async loadDataset() {
+    async loadDataset(options = {}) {
+      const {
+        targetPage = 0,
+        selectedIndex = 0,
+        preserveRecords = false
+      } = options;
+
       if(this.datasetId === 'demo') {
         this.questions = [...demoData];
+        this.totalQuestions = this.questions.length;
+        this.page = 0;
+        this.idx = Math.min(selectedIndex, Math.max(0, this.questions.length - 1));
       } else {
         this.loading = true;
         try {
           let url = `/api/load?id=${this.datasetId}`;
           if(this.selectedLevel) url += `&level=${encodeURIComponent(this.selectedLevel)}`;
+          url += `&page=${targetPage}&pageSize=${this.pageSize}`;
 
           const res = await fetch(url);
-          this.questions = await res.json();
+          const payload = await res.json();
+          this.questions = Array.isArray(payload.items) ? payload.items : [];
+          this.totalQuestions = Number(payload.total || 0);
+          this.page = Number.isInteger(payload.page) ? payload.page : targetPage;
+          this.idx = Math.min(selectedIndex, Math.max(0, this.questions.length - 1));
         } catch(e){ alert("Load failed"); }
         finally { this.loading = false; }
       }
-      this.idx = 0; this.page = 0; this.records = {}; this.select(0);
+      if (!preserveRecords) this.records = {};
+      if (!this.questions.length) {
+        this.idx = 0;
+        this.clear();
+        return;
+      }
+      this.select(this.idx);
     },
     select(i) {
       if(!this.questions.length) return;
-      this.idx = i;
-      const p = Math.floor(i / this.pageSize);
-      if(p !== this.page) this.page = p;
+      this.stopJudgingProgress();
+      this.idx = Math.max(0, Math.min(i, this.questions.length - 1));
 
-      const q = this.questions[i];
+      const q = this.questions[this.idx];
       if(q.isCustom) {
         this.editingQ = true;
         this.showTruth = true;
@@ -261,14 +279,52 @@ createApp({
       }
       this.renderMath();
     },
-    prev() { if(this.questions.length) this.select((this.idx - 1 + this.questions.length) % this.questions.length); },
-    next() { if(this.questions.length) this.select((this.idx + 1) % this.questions.length); },
+    async prev() {
+      if(!this.questions.length) return;
+      if (this.idx > 0) {
+        this.select(this.idx - 1);
+        return;
+      }
+      if (this.datasetId !== 'demo' && this.page > 0) {
+        await this.loadDataset({ targetPage: this.page - 1, selectedIndex: this.pageSize - 1, preserveRecords: true });
+        return;
+      }
+      if (this.datasetId === 'demo') {
+        this.select((this.idx - 1 + this.questions.length) % this.questions.length);
+      }
+    },
+    async next() {
+      if(!this.questions.length) return;
+      if (this.idx < this.questions.length - 1) {
+        this.select(this.idx + 1);
+        return;
+      }
+      const hasMorePages = this.datasetId !== 'demo' && (this.page + 1) < this.totalPages;
+      if (hasMorePages) {
+        await this.loadDataset({ targetPage: this.page + 1, selectedIndex: 0, preserveRecords: true });
+        return;
+      }
+      if (this.datasetId === 'demo') {
+        this.select((this.idx + 1) % this.questions.length);
+      }
+    },
+    async goToPage(targetPage) {
+      if (this.datasetId === 'demo') {
+        this.page = Math.max(0, Math.min(targetPage, this.totalPages - 1));
+        this.select(0);
+        return;
+      }
+      if (targetPage < 0 || targetPage >= this.totalPages || targetPage === this.page) return;
+      await this.loadDataset({ targetPage, selectedIndex: 0, preserveRecords: true });
+    },
     clear() {
       this.studentAns = '';
       this.score = 0;
       this.note = '';
       this.lastAIResult = null;
       this.similarQuestions = [];
+      this.stopJudgingProgress();
+      this.judgingProgressItems = [];
     },
     resetRecord() { delete this.records[this.currentQ.id]; this.select(this.idx); },
 
@@ -286,14 +342,6 @@ createApp({
       };
     },
 
-    buildComparisonSummary(result) {
-      if (!result || !result.comparison) return '';
-      const parts = [];
-      for (const [name, value] of Object.entries(result.comparison)) {
-        parts.push(`${name}: score=${value.score}, correct=${value.correct}`);
-      }
-      return parts.join(' | ');
-    },
     escapeHtml(value) {
       return String(value ?? '')
         .replace(/&/g, '&amp;')
@@ -354,6 +402,52 @@ createApp({
         referenceAnswer
       };
     },
+    extractProgressView(result) {
+      if (!result || typeof result !== 'object') return null;
+      const details = (result.details && typeof result.details === 'object') ? result.details : {};
+      const summary = (details.progress_summary && typeof details.progress_summary === 'object') ? details.progress_summary : null;
+      if (!summary || !Array.isArray(summary.items) || summary.items.length === 0) return null;
+      return {
+        headline: String(summary.headline || '处理摘要'),
+        items: summary.items.map(item => ({
+          stage: String(item.stage || ''),
+          label: String(item.label || '处理中'),
+          detail: String(item.detail || ''),
+          status: String(item.status || 'done')
+        }))
+      };
+    },
+    startJudgingProgress() {
+      this.stopJudgingProgress();
+      this.judgingProgressStartedAt = Date.now();
+      this.judgingProgressItems = [
+        { stage: 'request_received', label: '已接收题目', detail: '正在提交判卷请求', status: 'done' },
+        { stage: 'answer_equivalence', label: '答案快速比对', detail: '正在检查学生答案与标准答案是否可直接判定', status: 'active' },
+        { stage: 'grade_supervisor', label: '生成判卷结论', detail: '正在结合题目、标答和学生答案生成判卷结果', status: 'pending' },
+        { stage: 'recommendation_retrieval', label: '检索相似题', detail: '如判错，将补充相似题推荐', status: 'pending' }
+      ];
+      this.judgingProgressTimer = window.setInterval(() => this.updateJudgingProgress(), 1200);
+    },
+    updateJudgingProgress() {
+      const elapsedMs = Date.now() - this.judgingProgressStartedAt;
+      const items = this.judgingProgressItems.map(item => ({ ...item }));
+      if (elapsedMs >= 1500 && items[1]) {
+        items[1].status = 'done';
+        if (items[2]) items[2].status = 'active';
+      }
+      if (elapsedMs >= 5500 && items[2]) {
+        items[2].status = 'done';
+        if (items[3]) items[3].status = 'active';
+      }
+      this.judgingProgressItems = items;
+    },
+    stopJudgingProgress() {
+      if (this.judgingProgressTimer) {
+        window.clearInterval(this.judgingProgressTimer);
+        this.judgingProgressTimer = null;
+      }
+      this.judgingProgressStartedAt = 0;
+    },
     formatAnalysisNote(result) {
       const view = this.extractAnalysisView(result);
       if (!view) {
@@ -374,8 +468,6 @@ createApp({
       if (view.suggestion) lines.push(`改进建议：${view.suggestion}`);
       if (result && result.methodUsed) lines.push(`方法：${result.methodUsed}`);
 
-      const comparisonSummary = this.buildComparisonSummary(result);
-      if (comparisonSummary) lines.push(`对比：${comparisonSummary}`);
       lines.push('(AI)');
       return lines.join('\n\n');
     },
@@ -384,8 +476,8 @@ createApp({
       if(!this.studentAns.trim()) return;
       if(this.useAI) {
         this.judging = true;
+        this.startJudgingProgress();
         try {
-          const compareMethods = this.enableMethodCompare && this.compareMethod ? [this.compareMethod] : [];
           const res = await fetch("/api/agent/grade", {
             method: "POST", headers: {"Content-Type": "application/json"},
             body: JSON.stringify({
@@ -395,7 +487,6 @@ createApp({
               maxScore: String(this.maxScore),
               mode: 'single',
               gradingMethod: this.selectedGradingMethod,
-              compareMethods,
               datasetId: this.datasetId === 'demo' ? null : this.datasetId,
               level: this.selectedLevel || null,
               questionId: this.currentQ.id,
@@ -415,6 +506,7 @@ createApp({
         } catch(e) {
           alert("AI Error: " + e.message);
         } finally {
+          this.stopJudgingProgress();
           this.judging = false;
         }
       } else {

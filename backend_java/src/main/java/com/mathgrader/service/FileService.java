@@ -15,10 +15,12 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Stream;
 
 @Service
 public class FileService {
+    private final Map<String, List<Map<String, Object>>> datasetCache = new ConcurrentHashMap<>();
 
     @Value("${app.data.root:}")
     private String dataRoot;
@@ -84,6 +86,11 @@ public class FileService {
     }
 
     public List<Map<String, Object>> loadAndParse(String id) throws IOException {
+        List<Map<String, Object>> cached = datasetCache.get(id);
+        if (cached != null) {
+            return cached;
+        }
+
         Path root = getDataRoot();
         Path file = root.resolve(id);
         if (!Files.exists(file)) throw new IOException("File not found: " + id);
@@ -133,6 +140,7 @@ public class FileService {
             }
         }
         
+        datasetCache.put(id, rawData);
         return rawData;
     }
 }
