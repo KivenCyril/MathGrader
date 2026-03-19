@@ -256,4 +256,3 @@ backend_java/
 - 未安装 `langchain` 时，会回退到兼容调用路径 `LLMClient`
 - `pix2tex`、`Mathpix` 属于可选能力
 - 推荐检索依赖 `data/raw` 下的数据集
-- 当前 README 只保留了两张框图：一张讲系统结构，一张讲判卷主流程，其他细节尽量并入文字，避免图多但逻辑反而被拆散
