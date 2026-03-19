@@ -24,13 +24,13 @@ CALCULATOR_TOOL_DEF = {
     "type": "function",
     "function": {
         "name": "calculate",
-        "description": "Calculate the result of a mathematical expression. Use this whenever you need to verify a calculation.",
+        "description": "Calculate a numeric arithmetic expression. Use this for pure number calculations only. Do not use it to validate equations with unknowns or symbolic setups; use verify_equation_setup or verify_step instead.",
         "parameters": {
             "type": "object",
             "properties": {
                 "expression": {
                     "type": "string",
-                    "description": "The mathematical expression to evaluate (e.g., '123 * 45', 'sqrt(16)', '3.14 * 5**2')."
+                    "description": "A numeric expression to evaluate (e.g., '123 * 45', 'sqrt(16)', '3.14 * 5**2')."
                 }
             },
             "required": ["expression"]

@@ -1,10 +1,12 @@
 package com.mathgrader.controller;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mathgrader.model.GradeRequest;
 import com.mathgrader.model.GradeResponse;
 import com.mathgrader.service.QuestionPreprocessService;
 import com.mathgrader.model.Submission;
 import com.mathgrader.repository.SubmissionRepository;
+import com.mathgrader.service.GradeJobSessionService;
 import com.mathgrader.service.PythonAgentBridgeService;
 import jakarta.transaction.Transactional;
 import org.slf4j.Logger;
@@ -28,15 +30,21 @@ public class GradingController {
     private final PythonAgentBridgeService agentBridge;
     private final SubmissionRepository submissionRepository;
     private final QuestionPreprocessService preprocessService;
+    private final GradeJobSessionService gradeJobSessionService;
+    private final ObjectMapper objectMapper;
 
     public GradingController(
             PythonAgentBridgeService agentBridge,
             SubmissionRepository submissionRepository,
-            QuestionPreprocessService preprocessService
+            QuestionPreprocessService preprocessService,
+            GradeJobSessionService gradeJobSessionService,
+            ObjectMapper objectMapper
     ) {
         this.agentBridge = agentBridge;
         this.submissionRepository = submissionRepository;
         this.preprocessService = preprocessService;
+        this.gradeJobSessionService = gradeJobSessionService;
+        this.objectMapper = objectMapper;
     }
 
     private long elapsedMs(long startedAtNanos) {
@@ -45,6 +53,79 @@ public class GradingController {
 
     private String newTraceId() {
         return UUID.randomUUID().toString().replace("-", "").substring(0, 12);
+    }
+
+    private void preprocessRequest(GradeRequest request) {
+        var preprocess = preprocessService.preprocess(
+                request.getDatasetId(),
+                request.getQuestionId(),
+                request.getQuestionText(),
+                request.getStandardAnswer()
+        );
+        request.setQuestionText(preprocess.normalizedQuestionText());
+        request.setStandardAnswer(preprocess.normalizedTruth());
+        if (request.getQuestionType() == null || request.getQuestionType().isBlank()) {
+            request.setQuestionType(preprocess.questionType());
+        }
+    }
+
+    private void persistSubmission(GradeRequest request, GradeResponse response, String username) {
+        Submission submission = new Submission();
+        submission.setStudentName(username != null && !username.isBlank() ? username : "anonymous");
+        submission.setQuestionText(request.getQuestionText());
+        submission.setStandardAnswer(request.getStandardAnswer());
+        submission.setStudentAnswer(request.getStudentAnswer());
+
+        String modelUsed = request.getModel() != null ? request.getModel() : "default";
+        if (request.getGradingMethod() != null && !request.getGradingMethod().isBlank()) {
+            modelUsed = modelUsed + "|" + request.getGradingMethod();
+        }
+        submission.setModelUsed(modelUsed);
+
+        try {
+            if (request.getMaxScore() != null && !request.getMaxScore().isEmpty()) {
+                submission.setMaxScore(Double.parseDouble(request.getMaxScore()));
+            }
+        } catch (NumberFormatException e) {
+            submission.setMaxScore(0);
+        }
+
+        if (response != null) {
+            submission.setScore(response.getScore());
+            submission.setCorrect(response.isCorrect());
+            submission.setReason(response.getReason());
+        }
+
+        submissionRepository.save(submission);
+    }
+
+    private void persistCompletedAsyncJobIfNeeded(String jobId, Map<String, Object> progressPayload) {
+        if (jobId == null || jobId.isBlank() || progressPayload == null) {
+            return;
+        }
+        String status = String.valueOf(progressPayload.getOrDefault("status", ""));
+        if ("failed".equalsIgnoreCase(status)) {
+            gradeJobSessionService.remove(jobId);
+            return;
+        }
+        if (!"completed".equalsIgnoreCase(status)) {
+            return;
+        }
+
+        GradeJobSessionService.PendingGradeSession session = gradeJobSessionService.get(jobId);
+        if (session == null || session.isSaved()) {
+            return;
+        }
+
+        Object rawResult = progressPayload.get("result");
+        if (!(rawResult instanceof Map)) {
+            return;
+        }
+
+        GradeResponse response = objectMapper.convertValue(rawResult, GradeResponse.class);
+        persistSubmission(session.getRequest(), response, session.getUsername());
+        session.markSaved();
+        gradeJobSessionService.remove(jobId);
     }
     
     @PostMapping("/ocr")
@@ -72,26 +153,19 @@ public class GradingController {
         String traceId = newTraceId();
         long startedAt = System.nanoTime();
         long saveStartedAt = 0L;
-        var preprocess = preprocessService.preprocess(
-                request.getDatasetId(),
-                request.getQuestionId(),
-                request.getQuestionText(),
-                request.getStandardAnswer()
-        );
-        request.setQuestionText(preprocess.normalizedQuestionText());
-        request.setStandardAnswer(preprocess.normalizedTruth());
-        if (request.getQuestionType() == null || request.getQuestionType().isBlank()) {
-            request.setQuestionType(preprocess.questionType());
-        }
+        preprocessRequest(request);
         log.info(
-                "[Grade][{}] request received user={} questionId={} datasetId={} type={} model={} tools={}",
+                "[Grade][{}] request received user={} questionId={} datasetId={} type={} model={} tools={} needScore={} enableRecommendation={} scoringMode={}",
                 traceId,
                 principal != null ? principal.getName() : "anonymous",
                 request.getQuestionId(),
                 request.getDatasetId(),
                 request.getQuestionType(),
                 request.getModel(),
-                request.getEnableTools()
+                request.getEnableTools(),
+                request.getNeedScore(),
+                request.getEnableRecommendation(),
+                request.getScoringMode()
         );
 
         GradeResponse response = agentBridge.callPythonAgent(request, traceId);
@@ -99,33 +173,7 @@ public class GradingController {
         // Save submission to database
         try {
             saveStartedAt = System.nanoTime();
-            Submission submission = new Submission();
-            submission.setStudentName(principal != null ? principal.getName() : "anonymous");
-            submission.setQuestionText(request.getQuestionText());
-            submission.setStandardAnswer(request.getStandardAnswer());
-            submission.setStudentAnswer(request.getStudentAnswer());
-            String modelUsed = request.getModel() != null ? request.getModel() : "default";
-            if (request.getGradingMethod() != null && !request.getGradingMethod().isBlank()) {
-                modelUsed = modelUsed + "|" + request.getGradingMethod();
-            }
-            submission.setModelUsed(modelUsed);
-            
-            try {
-                if (request.getMaxScore() != null && !request.getMaxScore().isEmpty()) {
-                    submission.setMaxScore(Double.parseDouble(request.getMaxScore()));
-                }
-            } catch (NumberFormatException e) {
-                // Ignore parsing error
-                submission.setMaxScore(0);
-            }
-
-            if (response != null) {
-                submission.setScore(response.getScore());
-                submission.setCorrect(response.isCorrect());
-                submission.setReason(response.getReason());
-            }
-            
-            submissionRepository.save(submission);
+            persistSubmission(request, response, principal != null ? principal.getName() : "anonymous");
         } catch (Exception e) {
             log.warn("[Grade][{}] submission save failed: {}", traceId, e.getMessage());
             // Continue even if save fails
@@ -141,6 +189,43 @@ public class GradingController {
         );
         
         return response;
+    }
+
+    @PostMapping("/grade/submit")
+    public Map<String, Object> submitGrade(@RequestBody GradeRequest request, Principal principal) {
+        String traceId = newTraceId();
+        preprocessRequest(request);
+        log.info(
+                "[Grade][{}] async request received user={} questionId={} datasetId={} type={} model={} tools={} needScore={} enableRecommendation={} scoringMode={}",
+                traceId,
+                principal != null ? principal.getName() : "anonymous",
+                request.getQuestionId(),
+                request.getDatasetId(),
+                request.getQuestionType(),
+                request.getModel(),
+                request.getEnableTools(),
+                request.getNeedScore(),
+                request.getEnableRecommendation(),
+                request.getScoringMode()
+        );
+        Map<String, Object> accepted = agentBridge.submitGradeJob(request, traceId);
+        String jobId = String.valueOf(accepted.getOrDefault("jobId", ""));
+        if (jobId != null && !jobId.isBlank()) {
+            gradeJobSessionService.register(jobId, traceId, request, principal != null ? principal.getName() : "anonymous");
+        }
+        return accepted;
+    }
+
+    @GetMapping("/grade/progress/{jobId}")
+    public Map<String, Object> gradeProgress(@PathVariable String jobId) {
+        String traceId = newTraceId();
+        Map<String, Object> progress = agentBridge.fetchGradeJobProgress(jobId, traceId);
+        try {
+            persistCompletedAsyncJobIfNeeded(jobId, progress);
+        } catch (Exception e) {
+            log.warn("[Grade][{}] async submission save failed for job {}: {}", traceId, jobId, e.getMessage());
+        }
+        return progress;
     }
     
     @GetMapping("/history")

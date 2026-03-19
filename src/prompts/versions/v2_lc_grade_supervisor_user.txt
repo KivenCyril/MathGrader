@@ -1,14 +1,35 @@
-题目:
+Question:
 {{question}}
 
-标准答案:
+Question Type:
+{{question_type}}
+
+Equation-like Student Answer:
+{{equation_like_student}}
+
+Equation Validation Evidence:
+{{equation_validation}}
+
+Standard Answer:
 {{truth}}
 
-学生答案:
+Student Answer:
 {{student}}
 
-独立求解参考答案:
+Independent Reference Answer:
 {{reference_answer}}
 
-独立求解关键步骤:
+Independent Reference Steps:
 {{solver_steps}}
+
+Need Score:
+{{need_score}}
+
+Scoring Mode:
+{{scoring_mode}}
+
+Max Score:
+{{max_score}}
+
+Rubric:
+{{rubric_text}}

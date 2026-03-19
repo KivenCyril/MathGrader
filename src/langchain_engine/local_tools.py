@@ -18,9 +18,14 @@ def _normalize_expr(expr: str) -> str:
 
 
 def _sympy_parse(expr: str):
-    from sympy import sympify
+    from sympy.parsing.sympy_parser import (
+        implicit_multiplication_application,
+        parse_expr,
+        standard_transformations,
+    )
 
-    return sympify(_normalize_expr(expr))
+    transformations = standard_transformations + (implicit_multiplication_application,)
+    return parse_expr(_normalize_expr(expr), transformations=transformations, evaluate=True)
 
 
 def ocr_math(image_path: str, use_mathpix: bool = False) -> str:
@@ -164,6 +169,67 @@ def verify_step(steps: str) -> str:
     return _json({"ok": True, "valid": len(invalid) == 0, "checked": checked, "invalid": invalid})
 
 
+def verify_equation_setup(equation: str, expected_answer: str = "") -> str:
+    text = str(equation or "").strip()
+    expected_text = str(expected_answer or "").strip()
+    if "=" not in text:
+        return _json({"ok": False, "valid": False, "reason": "equation must contain '='"})
+
+    lhs_text, rhs_text = text.split("=", 1)
+    lhs_text = lhs_text.strip()
+    rhs_text = rhs_text.strip()
+    if not lhs_text or not rhs_text:
+        return _json({"ok": False, "valid": False, "reason": "both lhs and rhs are required"})
+
+    try:
+        from sympy import Eq, simplify, solve
+
+        lhs = _sympy_parse(lhs_text)
+        rhs = _sympy_parse(rhs_text)
+        symbols = sorted(list(lhs.free_symbols | rhs.free_symbols), key=lambda item: str(item))
+        result: Dict[str, Any] = {
+            "ok": True,
+            "valid": True,
+            "equation": text,
+            "symbols": [str(s) for s in symbols],
+            "simplified_difference": str(simplify(lhs - rhs)),
+        }
+
+        if not symbols:
+            is_identity = bool(simplify(lhs - rhs) == 0)
+            result["is_identity"] = is_identity
+            result["solutions"] = []
+            if expected_text:
+                try:
+                    expected_expr = _sympy_parse(expected_text)
+                    result["expected_matches"] = bool(simplify(lhs - rhs) == 0 and simplify(lhs - expected_expr) == 0)
+                except Exception:
+                    result["expected_matches"] = False
+            return _json(result)
+
+        equation_obj = Eq(lhs, rhs)
+        solved = solve(equation_obj, *symbols, dict=True)
+        solutions = []
+        for item in solved:
+            if isinstance(item, dict):
+                solutions.append({str(k): str(v) for k, v in item.items()})
+        result["solutions"] = solutions
+        result["has_solution"] = len(solutions) > 0
+
+        if expected_text and len(symbols) == 1:
+            symbol = symbols[0]
+            try:
+                expected_expr = _sympy_parse(expected_text)
+                satisfies = bool(simplify(lhs.subs(symbol, expected_expr) - rhs.subs(symbol, expected_expr)) == 0)
+                result["expected_matches"] = satisfies
+            except Exception as e:
+                result["expected_matches"] = False
+                result["expected_parse_error"] = str(e)
+        return _json(result)
+    except Exception as e:
+        return _json({"ok": False, "valid": False, "reason": f"equation verify failed: {e}"})
+
+
 def find_counterexample(statement: str, trials: int = 30) -> str:
     content = str(statement or "").strip()
     if "=" not in content:
@@ -262,13 +328,28 @@ LOCAL_LANGCHAIN_TOOL_DEFS: Dict[str, Dict[str, Any]] = {
         "type": "function",
         "function": {
             "name": "verify_step",
-            "description": "Verify step-by-step arithmetic equations for elementary math.",
+            "description": "Verify a multi-line chain of equalities or solving steps. Use this for step-by-step work, not for a single unfinished equation setup.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "steps": {"type": "string", "description": "Multi-line solving steps."},
                 },
                 "required": ["steps"],
+            },
+        },
+    },
+    "verify_equation_setup": {
+        "type": "function",
+        "function": {
+            "name": "verify_equation_setup",
+            "description": "Verify whether a single equation or setup is mathematically valid and solvable. Use this first when the student's answer is an equation like '5(x-10)=3x' rather than a final numeric answer.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "equation": {"type": "string", "description": "A single equation or setup containing '='."},
+                    "expected_answer": {"type": "string", "description": "Optional standard answer to test against the equation's solution."},
+                },
+                "required": ["equation"],
             },
         },
     },
@@ -295,6 +376,7 @@ LOCAL_LANGCHAIN_TOOL_HANDLERS: Dict[str, Callable[..., Any]] = {
     "img2latex": img2latex,
     "eval_expr": eval_expr,
     "verify_step": verify_step,
+    "verify_equation_setup": verify_equation_setup,
     "find_counterexample": find_counterexample,
 }
 

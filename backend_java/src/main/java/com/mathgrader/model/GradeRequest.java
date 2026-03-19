@@ -20,5 +20,8 @@ public class GradeRequest {
     private String questionType;
     private Integer recommendationCount;
     private Integer retrievalTopK;
+    private Boolean enableRecommendation;
     private Boolean enableTools;
+    private Boolean needScore;
+    private String scoringMode;
 }

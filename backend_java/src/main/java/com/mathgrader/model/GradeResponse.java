@@ -13,6 +13,7 @@ public class GradeResponse {
     private String usage; // Token usage info
     private String methodUsed;
     private Map<String, Object> details;
+    private Map<String, Object> scoring;
     private Map<String, Object> comparison;
     private List<Map<String, Object>> similarQuestions;
     private Map<String, Object> retrieval;

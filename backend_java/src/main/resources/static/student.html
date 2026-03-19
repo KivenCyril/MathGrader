@@ -199,19 +199,24 @@
 
           <div v-if="judging || activeProgressItems.length" class="progress-board">
             <div class="progress-headline">
-              {{ judging ? '正在判卷处理中' : ((progressView && progressView.headline) || '处理摘要') }}
+              {{ activeProgressHeadline }}
             </div>
             <div class="progress-item" v-for="item in activeProgressItems" :key="item.stage" :class="item.status">
               <div class="progress-dot"></div>
               <div class="progress-body">
                 <div class="progress-label">{{ item.label }}</div>
                 <div v-if="item.detail" class="progress-detail">{{ item.detail }}</div>
+                <div v-if="item.notes && item.notes.length" class="progress-notes">
+                  <div v-for="(note, noteIdx) in item.notes" :key="`${item.stage}-${noteIdx}`" class="progress-note">
+                    {{ note }}
+                  </div>
+                </div>
               </div>
             </div>
           </div>
 
           <div v-if="analysisView" class="analysis-board">
-            <div class="analysis-chip" :class="analysisView.verdict === '正确' ? 'ok' : 'bad'">
+            <div class="analysis-chip" :class="analysisView.verdict === '正确' ? 'ok' : (analysisView.verdict === '部分正确' ? 'partial' : 'bad')">
               <span class="analysis-chip-label">判定</span>
               <strong>{{ analysisView.verdict }}</strong>
             </div>
@@ -246,6 +251,11 @@
               <div class="analysis-text answer math-rich" v-html="renderMathText(analysisView.referenceAnswer)"></div>
             </div>
 
+            <div v-if="analysisView.rubricSummary || analysisView.rubricId" class="analysis-row">
+              <div class="analysis-label">评分规则</div>
+              <div class="analysis-text math-rich" v-html="renderMathText((analysisView.rubricId ? ('规则 ID: ' + analysisView.rubricId + '\n') : '') + (analysisView.rubricSummary || ''))"></div>
+            </div>
+
             <div v-if="analysisView.suggestion" class="analysis-row">
               <div class="analysis-label">改进建议</div>
               <div class="analysis-text math-rich" v-html="renderMathText(analysisView.suggestion)"></div>
@@ -272,6 +282,14 @@
                 <option v-for="m in gradingMethods" :key="m.id" :value="m.id">{{ m.label || m.id }}</option>
               </select>
             </div>
+            <label style="display:flex; justify-content:space-between; align-items:center; gap:10px; font-size:12px; color:var(--text-sub);">
+              <span>需要计算得分</span>
+              <input type="checkbox" v-model="needScore">
+            </label>
+            <label style="display:flex; justify-content:space-between; align-items:center; gap:10px; font-size:12px; color:var(--text-sub);">
+              <span>生成错题推荐</span>
+              <input type="checkbox" v-model="enableRecommendation">
+            </label>
           </div>
 
           <div>
@@ -294,6 +312,7 @@
 
           <div style="text-align:center; padding:12px; background:#f8fafc; border:1px solid var(--line); border-radius:8px; font-weight:600;" :class="{ 'ok': badgeState==='ok', 'bad': badgeState==='bad' }">
             <span v-if="badgeState==='ok'" style="color:var(--success)"><i class="fa-solid fa-circle-check"></i> 正确</span>
+            <span v-else-if="badgeState==='partial'" style="color:#b45309"><i class="fa-solid fa-circle-half-stroke"></i> 部分正确</span>
             <span v-else-if="badgeState==='bad'" style="color:var(--danger)"><i class="fa-solid fa-circle-xmark"></i> 错误</span>
             <span v-else style="color:var(--text-sub)">等待判卷</span>
           </div>

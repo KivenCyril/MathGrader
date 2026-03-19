@@ -54,14 +54,19 @@
     .progress-item { display: flex; align-items: flex-start; gap: 10px; padding: 8px 0; border-top: 1px dashed #e2e8f0; }
     .progress-item:first-of-type { border-top: none; padding-top: 0; }
     .progress-dot { width: 10px; height: 10px; margin-top: 5px; border-radius: 999px; background: #cbd5e1; flex: 0 0 auto; }
+    .progress-item.pending .progress-dot { background: #cbd5e1; }
     .progress-item.active .progress-dot { background: #4f46e5; box-shadow: 0 0 0 4px rgba(79, 70, 229, 0.12); }
     .progress-item.done .progress-dot { background: #10b981; }
+    .progress-item.failed .progress-dot { background: #ef4444; box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.12); }
     .progress-body { min-width: 0; }
     .progress-label { font-size: 13px; font-weight: 600; color: var(--text-main); }
     .progress-detail { font-size: 12px; line-height: 1.5; color: var(--text-sub); margin-top: 2px; }
+    .progress-notes { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
+    .progress-note { font-size: 12px; line-height: 1.5; color: #334155; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 6px 8px; }
     .analysis-chip { display: inline-flex; width: fit-content; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 999px; border: 1px solid var(--line); font-size: 12px; background: #fff; }
     .analysis-chip-label { color: var(--text-sub); }
     .analysis-chip.ok { border-color: #bbf7d0; background: #f0fdf4; color: #166534; }
+    .analysis-chip.partial { border-color: #fde68a; background: #fffbeb; color: #b45309; }
     .analysis-chip.bad { border-color: #fecaca; background: #fef2f2; color: #991b1b; }
     .analysis-row { border: 1px solid #dbeafe; background: #fff; border-radius: 8px; padding: 8px 10px; }
     .analysis-label { font-size: 12px; color: var(--text-sub); margin-bottom: 4px; }

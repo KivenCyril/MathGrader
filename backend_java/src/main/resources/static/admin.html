@@ -176,7 +176,11 @@
             <i :class="['text-2xl fa-solid', gradingResult.correct ? 'fa-circle-check' : 'fa-circle-xmark']"></i>
             <div>
               <div class="font-bold text-lg">{{ gradingResult.correct ? '姝ｇ‘' : '閿欒' }}</div>
-              <div class="text-sm opacity-80">寰楀垎: {{ gradingResult.score }} / {{ currentQuestion.maxScore || 1 }}</div>
+              <div class="text-sm opacity-80">
+                {{ gradingResult.scoring && gradingResult.scoring.applied === false
+                  ? '未计算得分'
+                  : `得分: ${gradingResult.score} / ${currentQuestion.maxScore || 1}` }}
+              </div>
             </div>
           </div>
 
@@ -231,6 +235,14 @@
         <label class="text-xs text-slate-500 flex items-center gap-2 mb-3">
           <input type="checkbox" v-model="enableMethodCompare">
           Compare with another method
+        </label>
+        <label class="text-xs text-slate-500 flex items-center gap-2 mb-3">
+          <input type="checkbox" v-model="needScore">
+          Need score
+        </label>
+        <label class="text-xs text-slate-500 flex items-center gap-2 mb-3">
+          <input type="checkbox" v-model="enableRecommendation">
+          Similar recommendations
         </label>
         <button 
           @click="runGrader" 
@@ -348,6 +360,8 @@
         selectedGradingMethod: 'small_fast',
         enableMethodCompare: false,
         compareMethod: '',
+        needScore: true,
+        enableRecommendation: false,
         currentIndex: -1,
         currentDatasetId: 'demo',
         studentAnswer: '',
@@ -495,7 +509,10 @@
               datasetId: this.currentDatasetId === 'demo' ? null : this.currentDatasetId,
               questionId: this.currentQuestion.id,
               recommendationCount: 3,
-              retrievalTopK: 5
+              retrievalTopK: 5,
+              enableRecommendation: this.enableRecommendation,
+              needScore: this.needScore,
+              scoringMode: 'auto'
             })
           });
           const result = await res.json();

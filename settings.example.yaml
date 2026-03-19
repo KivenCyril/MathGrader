@@ -7,11 +7,11 @@ models:
   qwen:
     api_key: "${QWEN_API_KEY}"
     base_url: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
-    model_name: "qwen-flash"
+    model_name: "qwen3.5-flash"
     embedding_max_batch: 10
 
 roles:
-  grader: "deepseek"
+  grader: "qwen"
   reviewer: "qwen"
 
 ocr:
@@ -22,10 +22,13 @@ ocr:
 mcp:
   refresh_sec: 90
   servers:
-    - name: "math"
-      url: "http://127.0.0.1:8787/mcp"
-      enabled: false
-      name_prefix: "math"
+    - name: "filesystem"
+      # Recommended first MCP:
+      # https://github.com/cyanheads/filesystem-mcp-server
+      # Start it with scripts/start_filesystem_mcp.ps1 and expose /mcp on port 3010.
+      url: "http://127.0.0.1:3010/mcp"
+      enabled: true
+      name_prefix: "fs"
       timeout_sec: 20
       headers: {}
 
@@ -47,15 +50,20 @@ langchain:
     grade_supervisor_user: "v2_lc_grade_supervisor_user"
   solve:
     solver_model: "qwen"
-    critic_model: "deepseek"
+    critic_model: "qwen"
     loop_rounds: 2
-    tools: ["calculate", "ocr_math", "img2latex", "eval_expr", "verify_step", "find_counterexample", "mcp:*"]
+    tools: ["calculate", "ocr_math", "img2latex", "eval_expr", "verify_step", "verify_equation_setup", "find_counterexample", "mcp:*"]
   grade:
     solver_model: "qwen"       # role: do the question
-    supervisor_model: "deepseek" # role: supervise verdict
+    supervisor_model: "qwen" # role: supervise verdict
     solver_only_when_truth_missing: true
     supervisor_tools_when_truth_present: false
-    tools: ["calculate", "ocr_math", "img2latex", "eval_expr", "verify_step", "find_counterexample", "mcp:*"]
+    scoring_analysis:
+      enabled: false
+      # Keep disabled until you provide a business-specific scoring MCP.
+      # The mature filesystem MCP is used as the first external MCP foundation.
+      tool_name: "fs.read_file"
+    tools: ["calculate", "ocr_math", "img2latex", "eval_expr", "verify_step", "verify_equation_setup", "find_counterexample", "mcp:*"]
   recommendation:
     enabled: true
     data_root: "data/raw"

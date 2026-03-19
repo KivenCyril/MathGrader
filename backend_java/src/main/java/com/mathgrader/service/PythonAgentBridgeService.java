@@ -57,6 +57,43 @@ public class PythonAgentBridgeService {
         }
     }
 
+    public Map<String, Object> submitGradeJob(GradeRequest request, String traceId) {
+        long startedAt = System.nanoTime();
+        try {
+            Map<String, Object> response = webClient.post()
+                    .uri(pythonAgentUrl + "/grade/submit")
+                    .header("X-Trace-Id", traceId)
+                    .bodyValue(request)
+                    .retrieve()
+                    .bodyToMono(Map.class)
+                    .timeout(Duration.ofSeconds(30))
+                    .block();
+            log.info("[Bridge][{}] /grade/submit completed in {} ms", traceId, elapsedMs(startedAt));
+            return response;
+        } catch (Exception e) {
+            log.warn("[Bridge][{}] /grade/submit failed after {} ms: {}", traceId, elapsedMs(startedAt), e.getMessage());
+            return Map.of("status", "failed", "error", "Failed to submit grade job. " + e.getMessage());
+        }
+    }
+
+    public Map<String, Object> fetchGradeJobProgress(String jobId, String traceId) {
+        long startedAt = System.nanoTime();
+        try {
+            Map<String, Object> response = webClient.get()
+                    .uri(pythonAgentUrl + "/grade/jobs/" + jobId)
+                    .header("X-Trace-Id", traceId)
+                    .retrieve()
+                    .bodyToMono(Map.class)
+                    .timeout(Duration.ofSeconds(30))
+                    .block();
+            log.info("[Bridge][{}] /grade/jobs/{} completed in {} ms", traceId, jobId, elapsedMs(startedAt));
+            return response;
+        } catch (Exception e) {
+            log.warn("[Bridge][{}] /grade/jobs/{} failed after {} ms: {}", traceId, jobId, elapsedMs(startedAt), e.getMessage());
+            return Map.of("jobId", jobId, "status", "failed", "error", "Failed to fetch grade progress. " + e.getMessage());
+        }
+    }
+
     public Map<String, String> performOcr(MultipartFile file, String traceId) {
         long startedAt = System.nanoTime();
         try {

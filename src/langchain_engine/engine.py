@@ -1,7 +1,9 @@
 ﻿import json
 import re
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
+
+from src.grading import MCPScoringAnalyzer, RubricLoader, ScoringEngine, VerdictEngine
 
 from src.langchain_engine.grading_results import build_rule_based_grade_result, ensure_supervisor_analysis
 from src.langchain_engine.grading_support import (
@@ -43,6 +45,10 @@ class LangChainMathEngine:
         self.tool_hub = ToolHub.from_runtime_config(self.config)
         self.local_tool_defs, self.local_tool_handlers = build_local_langchain_tools()
         self.recommender = HybridRecommendationService(self.config)
+        self.verdict_engine = VerdictEngine(self)
+        self.scoring_engine = ScoringEngine()
+        self.mcp_scoring_analyzer = MCPScoringAnalyzer(self)
+        self.rubric_loader = RubricLoader(self.config)
 
         lc_cfg = self.config.get("langchain", {}) or {}
         self.method_id = str(lc_cfg.get("method_id") or "langchain_solver_supervisor")
@@ -193,13 +199,14 @@ class LangChainMathEngine:
         lc_cfg = self.config.get("langchain", {}) or {}
         sec_cfg = lc_cfg.get(section, {}) or {}
         default_names = [
-            "calculate",
-            "ocr_math",
-            "img2latex",
-            "eval_expr",
-            "verify_step",
-            "find_counterexample",
-        ]
+                "calculate",
+                "ocr_math",
+                "img2latex",
+                "eval_expr",
+                "verify_step",
+                "verify_equation_setup",
+                "find_counterexample",
+          ]
         names = sec_cfg.get("tools") or default_names
         if not isinstance(names, list):
             names = default_names
@@ -568,6 +575,7 @@ class LangChainMathEngine:
         items: List[Dict[str, Any]] = []
         stage_labels = {
             "answer_equivalence": "答案快速比对",
+            "rule_fast_path": "规则直接判定",
             "grade_solver": "独立求解参考答案",
             "grade_solver_skipped": "跳过独立求解",
             "grade_supervisor": "生成判卷结论",
@@ -582,7 +590,9 @@ class LangChainMathEngine:
 
             timing_ms = float(stage.get("timing_ms") or 0.0)
             detail = f"耗时 {format_duration_ms(timing_ms)}"
-            if name == "grade_solver_skipped":
+            if name == "rule_fast_path":
+                detail = str(stage.get("detail") or "已通过规则引擎直接完成判定。").strip()
+            elif name == "grade_solver_skipped":
                 detail = "已检测到标准答案，直接进入最终判定"
             elif name in {"grade_solver", "grade_supervisor"}:
                 model = str(stage.get("model") or "").strip()
@@ -599,6 +609,7 @@ class LangChainMathEngine:
                     "label": label,
                     "detail": detail,
                     "status": "done",
+                    "notes": [str(x).strip() for x in (stage.get("notes") or []) if str(x).strip()],
                 }
             )
 
@@ -768,216 +779,145 @@ class LangChainMathEngine:
         question_type: Optional[str] = None,
         recommendation_count: Optional[int] = None,
         retrieval_top_k: Optional[int] = None,
+        enable_recommendation: Optional[bool] = True,
         trace_id: Optional[str] = None,
+        need_score: Optional[bool] = True,
+        scoring_mode: Optional[str] = None,
+        progress_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
     ) -> Dict[str, Any]:
-        total_started_at = time.perf_counter()
-        q = str(question or "").strip()
-        t = str(truth or "").strip()
-        s = str(student or "").strip()
         safe_max = float(max_score if max_score is not None else 1.0)
-
-        if not q:
-            return {"correct": False, "score": 0.0, "reason": "缺少题目内容。", "methodUsed": self.method_id}
-
-        equivalence_started_at = time.perf_counter()
-        if t and self._answers_equivalent(t, s):
-            return {
-                "correct": True,
-                "score": safe_max,
-                "reason": "学生答案与参考答案等价。",
-                "methodUsed": self.method_id,
-                "details": {
-                    "fast_path": True,
-                    "fast_path_kind": "answer_equivalence",
-                    "trace_id": trace_id,
-                    "question_type": self._normalize_question_type(question_type) or self._classify_question_type(q, t, s),
-                    "perf": {
-                        "total_ms": self._elapsed_ms(total_started_at),
-                        "answer_equivalence_ms": self._elapsed_ms(equivalence_started_at),
-                        "stages": [],
-                    },
-                },
-                "similarQuestions": [],
-                "retrieval": {
-                    "enabled": self.recommender.enabled,
-                    "strategy": "skipped_fast_path",
-                    "datasetId": dataset_id,
-                    "matched": 0,
-                },
-            }
-
-        question_type = self._normalize_question_type(question_type) or self._classify_question_type(q, t, s)
-        if question_type == "choice":
-            result = self._try_rule_based_choice_grade(t, s, safe_max, trace_id, total_started_at, equivalence_started_at)
-            if result:
-                result["retrieval"]["datasetId"] = dataset_id
-                return result
-        if question_type == "judgment":
-            result = self._try_rule_based_judgment_grade(t, s, safe_max, trace_id, total_started_at, equivalence_started_at)
-            if result:
-                result["retrieval"]["datasetId"] = dataset_id
-                return result
-        if question_type == "arithmetic":
-            result = self._try_rule_based_arithmetic_grade(q, t, s, safe_max, trace_id, total_started_at, equivalence_started_at)
-            if result:
-                result["retrieval"]["datasetId"] = dataset_id
-                return result
-
-        use_tools = self.default_tools_enabled if enable_tools is None else bool(enable_tools)
-        grade_cfg = (self.config.get("langchain", {}) or {}).get("grade", {}) or {}
-        solver_only_when_truth_missing = bool(grade_cfg.get("solver_only_when_truth_missing", True))
-        supervisor_tools_when_truth_present = bool(grade_cfg.get("supervisor_tools_when_truth_present", False))
-        has_usable_truth = self._has_usable_truth(t)
-        skip_solver = solver_only_when_truth_missing and has_usable_truth
-        solver_alias = self._get_model_alias("grade", "solver_model", "reviewer", override=model_alias)
-        supervisor_alias = self._get_model_alias("grade", "supervisor_model", "grader")
-        tool_names = self._resolve_tool_names("grade")
-        perf_stages = [
-            {
-                "stage": "answer_equivalence",
-                "timing_ms": self._elapsed_ms(equivalence_started_at),
-            }
-        ]
-
-        solver_json: Dict[str, Any] = {}
-        solver_res: Dict[str, Any] = {"tool_trace": [], "perf": {}}
-        reference_answer = ""
-        solver_steps = ""
-        if skip_solver:
-            reference_answer = t
-            solver_json = {
-                "reference_answer": reference_answer,
-                "key_steps": "",
-                "skipped": True,
-                "skip_reason": "standard_truth_available",
-            }
-            perf_stages.append(
-                {
-                    "stage": "grade_solver_skipped",
-                    "model": solver_alias,
-                    "timing_ms": 0.0,
-                    "tool_call_count": 0,
-                    "reason": "standard_truth_available",
-                }
+        verdict_result = self.verdict_engine.evaluate(
+            question=question,
+            truth=truth,
+            student=student,
+            max_score=safe_max,
+            model_alias=model_alias,
+            enable_tools=enable_tools,
+            dataset_id=dataset_id,
+            level=level,
+            question_id=question_id,
+            question_type=question_type,
+            recommendation_count=recommendation_count,
+            retrieval_top_k=retrieval_top_k,
+            enable_recommendation=enable_recommendation,
+            trace_id=trace_id,
+            need_score=bool(need_score),
+            scoring_mode=scoring_mode,
+            progress_callback=progress_callback,
+        )
+        details = verdict_result.get("details")
+        if not isinstance(details, dict):
+            details = {}
+            verdict_result["details"] = details
+        resolved_question_type = str(details.get("question_type") or question_type or "").strip().lower()
+        if bool(need_score) and resolved_question_type not in {"choice", "judgment", "arithmetic"}:
+            if progress_callback is not None:
+                progress_callback(
+                    {
+                        "stage": "mcp_scoring_analysis",
+                        "label": "评分分析准备",
+                        "detail": "正在结合 MCP、评分规则和判卷结论分析得分依据。",
+                        "status": "active",
+                        "notes": [],
+                    }
+                )
+            scoring_analysis = self.mcp_scoring_analyzer.analyze(
+                verdict_result=verdict_result,
+                question=question,
+                truth=truth,
+                student=student,
+                safe_max=safe_max,
+                question_type=resolved_question_type,
             )
         else:
-            solver_sys = self._safe_prompt("grade_solver_system")
-            solver_user = self._safe_prompt("grade_solver_user", question=q)
-            solver_res = self._invoke_with_tools(
-                solver_alias,
-                [self._system_msg(solver_sys), self._human_msg(solver_user)],
-                tool_names=tool_names,
-                enable_tools=use_tools,
-                temperature=0.1,
-            )
-            solver_json = self._parse_json(solver_res.get("content", ""))
-            reference_answer = str(solver_json.get("reference_answer") or "").strip()
-            solver_steps = str(solver_json.get("key_steps") or "").strip()
-            solver_perf = solver_res.get("perf") or {}
-            perf_stages.append(
+            scoring_analysis = {"enabled": False, "used": False, "reason": "skipped_for_current_mode"}
+        details["scoring_analysis"] = scoring_analysis
+        scoring_analysis_notes: List[str] = []
+        if scoring_analysis.get("used"):
+            scoring_analysis_notes.append(f"已调用评分分析工具：{scoring_analysis.get('toolName') or 'mcp'}。")
+            scoring_payload = scoring_analysis.get("scoring") if isinstance(scoring_analysis.get("scoring"), dict) else {}
+            analysis_summary = str(scoring_payload.get("summary") or "").strip()
+            if analysis_summary:
+                scoring_analysis_notes.append(analysis_summary)
+        elif scoring_analysis.get("enabled"):
+            scoring_analysis_notes.append(f"MCP 评分分析未生效：{scoring_analysis.get('reason')}")
+        elif bool(need_score) and resolved_question_type not in {"choice", "judgment", "arithmetic"}:
+            scoring_analysis_notes.append("当前未启用 MCP 评分分析，继续使用内置评分逻辑。")
+        if progress_callback is not None and bool(need_score) and resolved_question_type not in {"choice", "judgment", "arithmetic"}:
+            analysis_detail = "评分依据分析已完成。"
+            if scoring_analysis.get("used"):
+                analysis_detail = f"已完成评分依据分析，来源 {scoring_analysis.get('toolName') or 'mcp'}。"
+            elif scoring_analysis.get("enabled"):
+                analysis_detail = "评分依据分析已回退到内置逻辑。"
+            progress_callback(
                 {
-                    "stage": "grade_solver",
-                    "model": solver_alias,
-                    "timing_ms": solver_perf.get("timing_ms", 0.0),
-                    "tool_call_count": solver_perf.get("tool_call_count", 0),
+                    "stage": "mcp_scoring_analysis",
+                    "label": "评分分析准备",
+                    "detail": analysis_detail,
+                    "status": "done",
+                    "notes": scoring_analysis_notes,
                 }
             )
-
-        supervisor_sys = self._safe_prompt("grade_supervisor_system")
-        supervisor_user = self._safe_prompt(
-            "grade_supervisor_user",
-            question=q,
-            truth=t,
-            student=s,
-            reference_answer=reference_answer,
-            solver_steps=solver_steps,
-        )
-        supervisor_enable_tools = use_tools and (not has_usable_truth or supervisor_tools_when_truth_present)
-        supervisor_res = self._invoke_with_tools(
-            supervisor_alias,
-            [self._system_msg(supervisor_sys), self._human_msg(supervisor_user)],
-            tool_names=tool_names,
-            enable_tools=supervisor_enable_tools,
-            temperature=0.0,
-        )
-        supervisor_json = self._parse_json(supervisor_res.get("content", ""))
-        supervisor_perf = supervisor_res.get("perf") or {}
-        perf_stages.append(
-            {
-                "stage": "grade_supervisor",
-                "model": supervisor_alias,
-                "timing_ms": supervisor_perf.get("timing_ms", 0.0),
-                "tool_call_count": supervisor_perf.get("tool_call_count", 0),
-            }
-        )
-        raw_supervisor_content = str(supervisor_res.get("content") or "").strip()
-        if not supervisor_json and raw_supervisor_content:
-            supervisor_json = {
-                "reason": raw_supervisor_content,
-                "analysis": {
-                    "basis": raw_supervisor_content,
-                    "error_point": "",
-                    "correct_solution": solver_steps,
-                    "suggestion": "",
-                },
-            }
-        correct = bool(supervisor_json.get("correct", False))
-        supervisor_json = self._ensure_supervisor_analysis(
-            supervisor_json=supervisor_json,
-            correct=correct,
-            truth=t,
-            student=s,
-            reference_answer=reference_answer,
-            solver_steps=solver_steps,
-        )
-        reason = str(supervisor_json.get("reason") or raw_supervisor_content).strip()
-        score = safe_max if correct else 0.0
-        similar_questions: List[Dict[str, Any]] = []
-        retrieval_meta: Dict[str, Any] = {
-            "enabled": self.recommender.enabled,
-            "strategy": "skipped_correct",
-            "datasetId": dataset_id,
-            "matched": 0,
-        }
-        if not correct:
-            retrieval_started_at = time.perf_counter()
-            similar_questions, retrieval_meta = self.recommender.recommend(
-                dataset_id=dataset_id,
-                query_question=q,
-                exclude_question_id=question_id,
-                level=level,
-                top_k=retrieval_top_k,
-                recommendation_count=recommendation_count,
-            )
-            perf_stages.append(
+        if progress_callback is not None:
+            progress_callback(
                 {
-                    "stage": "recommendation_retrieval",
-                    "timing_ms": self._elapsed_ms(retrieval_started_at),
-                    "matched": retrieval_meta.get("matched", 0),
-                    "vector_enabled": retrieval_meta.get("vectorEnabled", False),
+                    "stage": "score_mapping",
+                    "label": "生成得分结果",
+                    "detail": "正在根据判卷结论和评分规则计算最终得分。",
+                    "status": "active",
+                    "notes": [],
                 }
             )
-
-        return {
-            "correct": correct,
-            "score": score,
-            "reason": reason or ("学生答案正确。" if correct else "学生答案错误。"),
-            "methodUsed": self.method_id,
-            "similarQuestions": similar_questions,
-            "retrieval": retrieval_meta,
-            "details": {
-                "trace_id": trace_id,
-                "question_type": question_type,
-                "solver_model": solver_alias,
-                "supervisor_model": supervisor_alias,
-                "solver_output": solver_json,
-                "supervisor_output": supervisor_json,
-                "solver_tool_trace": solver_res.get("tool_trace", []),
-                "supervisor_tool_trace": supervisor_res.get("tool_trace", []),
-                "progress_summary": self._build_progress_summary(perf_stages, retrieval_meta, correct),
-                "perf": {
-                    "total_ms": self._elapsed_ms(total_started_at),
-                    "stages": perf_stages,
-                },
-            },
-        }
+        scoring = self.scoring_engine.score(
+            verdict_result=verdict_result,
+            safe_max=safe_max,
+            question_type=resolved_question_type,
+            need_score=bool(need_score),
+            scoring_mode=scoring_mode,
+        )
+        verdict_result["score"] = float(scoring.get("score", 0.0) or 0.0)
+        verdict_result["scoring"] = scoring
+        details["scoring"] = scoring
+        summary = details.get("progress_summary")
+        if isinstance(summary, dict):
+            items = summary.get("items")
+            if isinstance(items, list):
+                if bool(need_score) and resolved_question_type not in {"choice", "judgment", "arithmetic"}:
+                    analysis_detail = "评分依据分析已完成。"
+                    if scoring_analysis.get("used"):
+                        analysis_detail = f"已完成评分依据分析，来源 {scoring_analysis.get('toolName') or 'mcp'}。"
+                    elif scoring_analysis.get("enabled"):
+                        analysis_detail = "评分依据分析已回退到内置逻辑。"
+                    items.append(
+                        {
+                            "stage": "mcp_scoring_analysis",
+                            "label": "评分分析准备",
+                            "detail": analysis_detail,
+                            "status": "done",
+                            "notes": scoring_analysis_notes,
+                        }
+                    )
+                detail_text = "本次未计算得分。"
+                if bool(scoring.get("applied")):
+                    detail_text = f"评分模式 {scoring.get('mode')}，结果 {verdict_result['score']} / {scoring.get('maxScore')}"
+                score_item = {
+                    "stage": "score_mapping",
+                    "label": "生成得分结果",
+                    "detail": detail_text,
+                    "status": "done",
+                    "notes": [str(x).strip() for x in (scoring.get("notes") or []) if str(x).strip()],
+                }
+                items.append(score_item)
+                if progress_callback is not None:
+                    progress_callback(score_item)
+        elif progress_callback is not None:
+            progress_callback(
+                {
+                    "stage": "score_mapping",
+                    "label": "生成得分结果",
+                    "detail": "得分计算已完成。",
+                    "status": "done",
+                    "notes": [str(x).strip() for x in (scoring.get("notes") or []) if str(x).strip()],
+                }
+            )
+        return verdict_result

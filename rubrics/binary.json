@@ -1,0 +1,13 @@
+{
+  "id": "binary",
+  "strategy": "binary",
+  "summary": "客观题和简单计算题默认采用二值评分：对即满分，错即零分。",
+  "dimensions": [
+    {
+      "label": "最终答案",
+      "weight": 1.0,
+      "criteria": "答案正确则满分，否则零分。"
+    }
+  ],
+  "penalties": []
+}
