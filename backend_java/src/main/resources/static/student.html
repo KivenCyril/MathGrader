@@ -119,6 +119,60 @@
     </div>
   </div>
 
+  <div v-if="showRubricModal" class="modal-overlay" @click.self="showRubricModal = false">
+    <div class="modal-content rubric-modal">
+      <div class="modal-header">
+        <h3>评分细则设置</h3>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <button
+            @click="clearRubric"
+            class="btn"
+            :disabled="rubricUploading || !rubricText.trim()"
+            style="height:36px; padding:0 12px; border-color:#fecaca; color:#b91c1c; background:#fff7f7;"
+            title="清空当前评分细则">
+            <i class="fa-regular fa-trash-can"></i>
+            清空
+          </button>
+          <button @click="showRubricModal = false" class="btn icon-only"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+      </div>
+      <div class="modal-body rubric-modal-body">
+        <div class="rubric-upload-bar">
+          <label for="rubricFileInput" class="btn primary" :class="{ disabled: rubricUploading }" style="cursor:pointer;">
+            <i :class="rubricUploading ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-file-arrow-up'"></i>
+            上传文件
+          </label>
+          <input
+            id="rubricFileInput"
+            type="file"
+            accept=".txt,.json,.doc,.docx,.pdf,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,application/json"
+            @change="handleRubricFile"
+            style="display:none">
+          <div class="rubric-upload-hint">
+            支持手动输入，也支持上传 `txt/json/doc/docx/pdf`。
+            <span v-if="rubricFileName">当前文件：{{ rubricFileName }}</span>
+          </div>
+        </div>
+
+        <div class="rubric-editor-block">
+          <label class="rubric-editor-label">评分细则内容</label>
+          <textarea
+            v-model="rubricText"
+            class="modern-input rubric-textarea"
+            rows="12"
+            placeholder="示例：&#10;解题思路 40%&#10;关键步骤 35%&#10;最终答案 25%&#10;单位遗漏 扣10%&#10;&#10;也可以直接粘贴 JSON rubric。"></textarea>
+        </div>
+
+        <div class="rubric-modal-footer">
+          <div class="rubric-upload-hint">
+            内容会在本次判卷请求中作为运行时评分细则发送，不会自动保存为全局模板。
+          </div>
+          <button @click="showRubricModal = false" class="btn primary">完成</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div :class="['main-grid', { 'list-collapsed': listCollapsed }]">
     <div :class="['card', 'list-card', { 'show': showList, 'collapsed': listCollapsed }]">
       <div class="card-header list-header">
@@ -206,6 +260,12 @@
               <div class="progress-body">
                 <div class="progress-label">{{ item.label }}</div>
                 <div v-if="item.detail" class="progress-detail">{{ item.detail }}</div>
+                <div v-if="item.progress !== null" class="progress-meter">
+                  <div class="progress-meter-track">
+                    <div class="progress-meter-fill" :style="{ width: `${item.progress}%` }"></div>
+                  </div>
+                  <div class="progress-meter-text">{{ item.progress.toFixed(0) }}%</div>
+                </div>
                 <div v-if="item.notes && item.notes.length" class="progress-notes">
                   <div v-for="(note, noteIdx) in item.notes" :key="`${item.stage}-${noteIdx}`" class="progress-note">
                     {{ note }}
@@ -251,11 +311,6 @@
               <div class="analysis-text answer math-rich" v-html="renderMathText(analysisView.referenceAnswer)"></div>
             </div>
 
-            <div v-if="analysisView.rubricSummary || analysisView.rubricId" class="analysis-row">
-              <div class="analysis-label">评分规则</div>
-              <div class="analysis-text math-rich" v-html="renderMathText((analysisView.rubricId ? ('规则 ID: ' + analysisView.rubricId + '\n') : '') + (analysisView.rubricSummary || ''))"></div>
-            </div>
-
             <div v-if="analysisView.suggestion" class="analysis-row">
               <div class="analysis-label">改进建议</div>
               <div class="analysis-text math-rich" v-html="renderMathText(analysisView.suggestion)"></div>
@@ -276,11 +331,16 @@
           </div>
 
           <div v-if="useAI" style="display:flex; flex-direction:column; gap:10px; padding:12px; border:1px solid var(--line); border-radius:8px; background:#f8fafc;">
-            <div style="display:flex; gap:10px; align-items:center;">
-              <div style="font-size:12px; color:var(--text-sub); min-width:80px;">判卷方法</div>
-              <select v-model="selectedGradingMethod" class="modern-input" style="height:36px; padding:6px 10px;">
-                <option v-for="m in gradingMethods" :key="m.id" :value="m.id">{{ m.label || m.id }}</option>
-              </select>
+            <div class="rubric-inline-card">
+              <div class="rubric-inline-head">
+                <div>
+                  <div class="rubric-inline-title">评分细则</div>
+                  <div class="rubric-inline-sub">{{ rubricStatusText }}</div>
+                </div>
+                <button @click="showRubricModal = true" class="btn" style="padding:6px 10px;">
+                  <i class="fa-solid fa-sliders"></i> 设置
+                </button>
+              </div>
             </div>
             <label style="display:flex; justify-content:space-between; align-items:center; gap:10px; font-size:12px; color:var(--text-sub);">
               <span>需要计算得分</span>

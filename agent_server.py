@@ -7,6 +7,7 @@ from typing import Any, Dict
 
 from dotenv import load_dotenv
 from flask import Flask, jsonify, request
+from werkzeug.serving import WSGIRequestHandler
 
 from src.grading.grade_job_store import GradeJobStore
 from src.langchain_engine import LangChainMathEngine
@@ -92,6 +93,39 @@ def compact_perf(perf: Dict[str, Any]) -> Dict[str, Any]:
     if isinstance(stages, list):
         compact["stage_count"] = len(stages)
         compact["stage_names"] = [str(item.get("stage") or "") for item in stages if isinstance(item, dict)]
+        compact["stage_timings"] = [
+            {
+                "stage": str(item.get("stage") or ""),
+                "timing_ms": item.get("timing_ms"),
+                **({"model": str(item.get("model") or "")} if str(item.get("model") or "").strip() else {}),
+                **({"tool_call_count": int(item.get("tool_call_count") or 0)} if "tool_call_count" in item else {}),
+                **({"backend": str(item.get("backend") or "")} if str(item.get("backend") or "").strip() else {}),
+                **({"matched": int(item.get("matched") or 0)} if "matched" in item else {}),
+                **({"vector_enabled": bool(item.get("vector_enabled"))} if "vector_enabled" in item else {}),
+            }
+            for item in stages
+            if isinstance(item, dict)
+        ]
+    return compact
+
+
+def compact_retrieval(retrieval: Dict[str, Any]) -> Dict[str, Any]:
+    compact: Dict[str, Any] = {}
+    if not isinstance(retrieval, dict):
+        return compact
+    for key in [
+        "enabled",
+        "backend",
+        "strategy",
+        "datasetId",
+        "matched",
+        "vectorEnabled",
+        "collectionName",
+        "fallbackReason",
+        "error",
+    ]:
+        if key in retrieval:
+            compact[key] = retrieval.get(key)
     return compact
 
 
@@ -102,6 +136,9 @@ def compact_trace(trace: Dict[str, Any]) -> Dict[str, Any]:
     perf = compact.get("perf")
     if isinstance(perf, dict):
         compact["perf"] = compact_perf(perf)
+    retrieval = compact.get("retrieval")
+    if isinstance(retrieval, dict):
+        compact["retrieval"] = compact_retrieval(retrieval)
     return compact
 
 
@@ -124,7 +161,34 @@ def build_grade_payload(data: Dict[str, Any]) -> Dict[str, Any]:
         "need_score": parse_bool(data.get("need_score", data.get("needScore", True)), True),
         "scoring_mode": str(data.get("scoring_mode", data.get("scoringMode", "auto")) or "auto").strip() or "auto",
         "enable_tools": parse_bool(data.get("enable_tools", data.get("enableTools", default_tools_enabled)), default_tools_enabled),
+        "rubric_json": data.get("rubric_json", data.get("rubricJson")),
+        "rubric_text": data.get("rubric_text", data.get("rubricText")),
     }
+
+
+def resolve_model_details(alias: Any) -> Dict[str, str]:
+    alias_text = str(alias or "").strip()
+    cfg = config_service.get_model_config(alias_text) if alias_text else {}
+    model_name = str((cfg or {}).get("model_name") or "").strip()
+    return {
+        "alias": alias_text or "default",
+        "name": model_name or "",
+    }
+
+
+def resolve_grade_runtime_models() -> Dict[str, Dict[str, str]]:
+    solver_alias = engine._get_model_alias("grade", "solver_model", "reviewer")
+    supervisor_alias = engine._get_model_alias("grade", "supervisor_model", "grader")
+    return {
+        "solver": resolve_model_details(solver_alias),
+        "supervisor": resolve_model_details(supervisor_alias),
+    }
+
+
+def force_backend_grade_models(payload: Dict[str, Any]) -> Dict[str, Any]:
+    sanitized = dict(payload or {})
+    sanitized["model_alias"] = None
+    return sanitized
 
 
 def make_progress_callback(job_id: str):
@@ -136,6 +200,7 @@ def make_progress_callback(job_id: str):
             detail=str(event.get("detail") or "").strip(),
             status=str(event.get("status") or "").strip() or None,
             notes=[str(note or "").strip() for note in (event.get("notes") or []) if str(note or "").strip()],
+            progress=event.get("progress"),
         )
 
     return callback
@@ -144,10 +209,14 @@ def make_progress_callback(job_id: str):
 def run_grade_job(job_id: str, trace_id: str, payload: Dict[str, Any]) -> None:
     route_started_at = time.perf_counter()
     question_preview = str(payload.get("question") or "")[:30]
+    runtime_models = resolve_grade_runtime_models()
     try:
         job_store.start(job_id)
         safe_print(
-            f"[Grade][Async] Job {job_id} | Model: {payload.get('model_alias') or 'default'} | "
+            f"[Grade][Async] Job {job_id} | Solver: {runtime_models['solver']['alias']} "
+            f"({runtime_models['solver']['name'] or '-'}) | "
+            f"Supervisor: {runtime_models['supervisor']['alias']} "
+            f"({runtime_models['supervisor']['name'] or '-'}) | "
             f"Tools: {payload.get('enable_tools')} | Question: {question_preview}..."
         )
         result = engine.grade(
@@ -167,6 +236,8 @@ def run_grade_job(job_id: str, trace_id: str, payload: Dict[str, Any]) -> None:
             trace_id=trace_id,
             need_score=payload.get("need_score"),
             scoring_mode=payload.get("scoring_mode"),
+            rubric_override=payload.get("rubric_json"),
+            rubric_text=payload.get("rubric_text"),
             progress_callback=make_progress_callback(job_id),
         )
         result.setdefault("methodUsed", engine.method_id)
@@ -185,6 +256,12 @@ def run_grade_job(job_id: str, trace_id: str, payload: Dict[str, Any]) -> None:
                 "status": "completed",
                 "correct": result.get("correct"),
                 "score": result.get("score"),
+                "solver_model_alias": runtime_models["solver"]["alias"],
+                "solver_model_name": runtime_models["solver"]["name"],
+                "supervisor_model_alias": runtime_models["supervisor"]["alias"],
+                "supervisor_model_name": runtime_models["supervisor"]["name"],
+                "similar_count": len(result.get("similarQuestions") or []),
+                "retrieval": result.get("retrieval"),
                 "perf": perf,
             }
         )
@@ -204,17 +281,6 @@ def run_grade_job(job_id: str, trace_id: str, payload: Dict[str, Any]) -> None:
         )
 
 
-@app.route("/models", methods=["GET"])
-def list_models():
-    models = list(config_service.config.get("models", {}).keys())
-    return jsonify(models)
-
-
-@app.route("/grading-methods", methods=["GET"])
-def list_grading_methods():
-    return jsonify(engine.list_methods())
-
-
 ocr_service = OCRService("auto")
 
 
@@ -231,12 +297,13 @@ def ocr():
     try:
         ocr_started_at = time.perf_counter()
         text = ocr_service.recognize(file)
+        engine_name = getattr(getattr(ocr_service, "strategy", None), "name", "ocr")
         perf = {
             "route_ms": elapsed_ms(route_started_at),
             "ocr_ms": elapsed_ms(ocr_started_at),
         }
-        log_trace({"trace_id": trace_id, "route": "/ocr", "file_name": file.filename, "perf": perf})
-        return jsonify({"text": text, "traceId": trace_id, "perf": perf})
+        log_trace({"trace_id": trace_id, "route": "/ocr", "file_name": file.filename, "engine": engine_name, "perf": perf})
+        return jsonify({"text": text, "traceId": trace_id, "engine": engine_name, "perf": perf})
     except Exception as exc:
         safe_print(f"OCR Error: {exc}")
         log_trace({"trace_id": trace_id, "route": "/ocr", "error": str(exc), "route_ms": elapsed_ms(route_started_at)})
@@ -247,11 +314,16 @@ def ocr():
 def grade():
     route_started_at = time.perf_counter()
     data = request.json or {}
-    payload = build_grade_payload(data)
+    payload = force_backend_grade_models(build_grade_payload(data))
     trace_id = request_trace_id()
     question_preview = str(payload.get("question") or "")[:30]
+    runtime_models = resolve_grade_runtime_models()
 
-    safe_print(f"[Grade] LangChain Solver+Supervisor | Model: {payload.get('model_alias') or 'default'} | Tools: {payload.get('enable_tools')}")
+    safe_print(
+        f"[Grade] LangChain Solver+Supervisor | Solver: {runtime_models['solver']['alias']} "
+        f"({runtime_models['solver']['name'] or '-'}) | Supervisor: {runtime_models['supervisor']['alias']} "
+        f"({runtime_models['supervisor']['name'] or '-'}) | Tools: {payload.get('enable_tools')}"
+    )
     safe_print(f"[Grade] Processing question: {question_preview}...")
     log_trace(
         {
@@ -259,7 +331,10 @@ def grade():
             "route": "/grade",
             "method": engine.method_id,
             "tools_enabled": payload.get("enable_tools"),
-            "grader_model": payload.get("model_alias") or "default",
+            "solver_model_alias": runtime_models["solver"]["alias"],
+            "solver_model_name": runtime_models["solver"]["name"],
+            "supervisor_model_alias": runtime_models["supervisor"]["alias"],
+            "supervisor_model_name": runtime_models["supervisor"]["name"],
             "question_preview": question_preview,
             "dataset_id": payload.get("dataset_id"),
             "level": payload.get("level"),
@@ -290,6 +365,8 @@ def grade():
         trace_id=trace_id,
         need_score=payload.get("need_score"),
         scoring_mode=payload.get("scoring_mode"),
+        rubric_override=payload.get("rubric_json"),
+        rubric_text=payload.get("rubric_text"),
     )
     result.setdefault("methodUsed", engine.method_id)
     result.setdefault("similarQuestions", [])
@@ -298,9 +375,6 @@ def grade():
     perf["route_ms"] = elapsed_ms(route_started_at)
     details["perf"] = perf
     details["trace_id"] = trace_id
-    if data.get("compareMethods"):
-        result["comparison"] = {}
-
     log_trace(
         {
             "trace_id": trace_id,
@@ -308,6 +382,12 @@ def grade():
             "status": "completed",
             "correct": result.get("correct"),
             "score": result.get("score"),
+            "solver_model_alias": runtime_models["solver"]["alias"],
+            "solver_model_name": runtime_models["solver"]["name"],
+            "supervisor_model_alias": runtime_models["supervisor"]["alias"],
+            "supervisor_model_name": runtime_models["supervisor"]["name"],
+            "similar_count": len(result.get("similarQuestions") or []),
+            "retrieval": result.get("retrieval"),
             "perf": perf,
         }
     )
@@ -321,16 +401,21 @@ def grade():
 @app.route("/grade/submit", methods=["POST"])
 def submit_grade_job():
     data = request.json or {}
-    payload = build_grade_payload(data)
+    payload = force_backend_grade_models(build_grade_payload(data))
     trace_id = request_trace_id()
     job = job_store.create(trace_id)
     job_id = str(job.get("jobId") or "")
+    runtime_models = resolve_grade_runtime_models()
     log_trace(
         {
             "trace_id": trace_id,
             "job_id": job_id,
             "route": "/grade/submit",
             "status": "accepted",
+            "solver_model_alias": runtime_models["solver"]["alias"],
+            "solver_model_name": runtime_models["solver"]["name"],
+            "supervisor_model_alias": runtime_models["supervisor"]["alias"],
+            "supervisor_model_name": runtime_models["supervisor"]["name"],
             "question_preview": str(payload.get("question") or "")[:30],
             "enable_recommendation": payload.get("enable_recommendation"),
             "need_score": payload.get("need_score"),
@@ -356,6 +441,17 @@ def get_grade_job(job_id: str):
     if not job:
         return jsonify({"error": "Job not found", "jobId": job_id}), 404
     return jsonify(job)
+
+
+class QuietRequestHandler(WSGIRequestHandler):
+    QUIET_PATH_PREFIXES = ("/grade/jobs/",)
+    QUIET_PATHS = set()
+
+    def log_request(self, code="-", size="-"):
+        path = str(getattr(self, "path", "") or "").split("?", 1)[0]
+        if path in self.QUIET_PATHS or any(path.startswith(prefix) for prefix in self.QUIET_PATH_PREFIXES):
+            return
+        return super().log_request(code=code, size=size)
 
 
 @app.route("/solve", methods=["POST"])
@@ -424,4 +520,4 @@ def solve():
 
 if __name__ == "__main__":
     safe_print("Python Agent Service running on port 5000")
-    app.run(port=5000, debug=True, use_reloader=False)
+    app.run(port=5000, debug=True, use_reloader=False, request_handler=QuietRequestHandler)

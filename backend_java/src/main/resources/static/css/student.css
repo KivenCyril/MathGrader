@@ -61,6 +61,10 @@
     .progress-body { min-width: 0; }
     .progress-label { font-size: 13px; font-weight: 600; color: var(--text-main); }
     .progress-detail { font-size: 12px; line-height: 1.5; color: var(--text-sub); margin-top: 2px; }
+    .progress-meter { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+    .progress-meter-track { flex: 1; height: 8px; border-radius: 999px; background: #e2e8f0; overflow: hidden; }
+    .progress-meter-fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg, #4f46e5, #60a5fa); transition: width 0.25s ease; }
+    .progress-meter-text { font-size: 11px; font-weight: 600; color: #1d4ed8; min-width: 34px; text-align: right; }
     .progress-notes { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
     .progress-note { font-size: 12px; line-height: 1.5; color: #334155; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 6px 8px; }
     .analysis-chip { display: inline-flex; width: fit-content; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 999px; border: 1px solid var(--line); font-size: 12px; background: #fff; }
@@ -118,6 +122,20 @@
     .history-table th, .history-table td { padding: 10px; text-align: left; border-bottom: 1px solid var(--line); }
     .history-table th { background: #f8fafc; font-weight: 600; color: var(--text-sub); }
     .history-table tr:hover { background: #f1f5f9; }
+
+    .rubric-inline-card { border: 1px solid #cbd5e1; border-radius: 10px; background: #fff; padding: 10px 12px; }
+    .rubric-inline-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+    .rubric-inline-title { font-size: 12px; font-weight: 700; color: #334155; }
+    .rubric-inline-sub { margin-top: 4px; font-size: 12px; line-height: 1.5; color: var(--text-sub); white-space: pre-wrap; }
+    .rubric-modal { width: 760px; }
+    .rubric-modal-body { display: flex; flex-direction: column; gap: 16px; }
+    .rubric-upload-bar { display: flex; flex-direction: column; gap: 10px; padding: 12px; border: 1px dashed #cbd5e1; border-radius: 10px; background: #f8fafc; }
+    .rubric-upload-hint { font-size: 12px; line-height: 1.6; color: var(--text-sub); white-space: pre-wrap; }
+    .rubric-editor-block { display: flex; flex-direction: column; gap: 8px; }
+    .rubric-editor-label { font-size: 13px; font-weight: 600; color: #334155; }
+    .rubric-textarea { min-height: 280px; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; line-height: 1.6; }
+    .rubric-modal-footer { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+    .btn.disabled { pointer-events: none; opacity: 0.7; }
 
     /* Mobile Toggle & Menu Base */
     .mobile-toggle { display: none; }
@@ -193,4 +211,7 @@
         .list-card .card-body { max-height: none; }
 
         .card-body { max-height: 400px; }
+        .rubric-inline-head { align-items: flex-start; flex-direction: column; }
+        .rubric-modal { width: min(92vw, 760px); max-height: 88vh; }
+        .rubric-modal-footer { flex-direction: column; align-items: stretch; }
     }

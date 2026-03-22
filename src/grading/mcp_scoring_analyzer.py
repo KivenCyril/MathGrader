@@ -15,6 +15,7 @@ class MCPScoringAnalyzer:
         student: str,
         safe_max: float,
         question_type: str,
+        rubric: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         grade_cfg = (self.engine.config.get("langchain", {}) or {}).get("grade", {}) or {}
         analysis_cfg = (grade_cfg.get("scoring_analysis") or {}) if isinstance(grade_cfg.get("scoring_analysis"), dict) else {}
@@ -41,6 +42,7 @@ class MCPScoringAnalyzer:
             "max_score": float(safe_max),
             "correct": bool(verdict_result.get("correct", False)),
             "reason": str(verdict_result.get("reason") or ""),
+            "rubric": rubric if isinstance(rubric, dict) else {},
             "solver_output": solver_output,
             "supervisor_output": supervisor_output,
         }

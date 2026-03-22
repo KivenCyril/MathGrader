@@ -10,6 +10,7 @@ pandas
 # Optional: enable orchestrator.solver_loop.use_langchain_critic
 langchain
 langchain-openai
+weaviate-client
 sympy
 # Optional OCR backup:
 pix2tex

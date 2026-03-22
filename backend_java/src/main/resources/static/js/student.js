@@ -35,13 +35,15 @@ createApp({
       historyList: [],
       historyLoading: false,
       clearingHistory: false,
+      showRubricModal: false,
+      rubricText: "",
+      rubricFileName: "",
+      rubricUploading: false,
       username: "",
       showMobileMenu: false,
       showList: false,
       listCollapsed: false,
 
-      gradingMethods: [],
-      selectedGradingMethod: "small_fast",
       needScore: true,
       enableRecommendation: false,
 
@@ -86,6 +88,13 @@ createApp({
     progressView() {
       return this.extractProgressView(this.lastAIResult);
     },
+    rubricStatusText() {
+      const text = String(this.rubricText || "").trim();
+      if (!text) return "当前使用系统默认规则";
+      const firstLine = text.split(/\r?\n/).map(line => line.trim()).find(Boolean) || "";
+      const preview = firstLine ? firstLine.slice(0, 60) + (firstLine.length > 60 ? "..." : "") : "已输入自定义规则";
+      return this.rubricFileName ? (preview + "\n来源: " + this.rubricFileName) : preview;
+    },
     activeProgressHeadline() {
       if (this.judging) return this.judgingProgressHeadline || "正在判卷处理中";
       return (this.progressView && this.progressView.headline) || "处理摘要";
@@ -95,10 +104,10 @@ createApp({
       return (this.progressView && Array.isArray(this.progressView.items)) ? this.progressView.items : [];
     }
   },
-  mounted() {
-    this.useAI = localStorage.getItem("useAI") === "true";
-    this.listCollapsed = localStorage.getItem("studentListCollapsed") === "true";
-    this.init();
+    mounted() {
+      this.useAI = localStorage.getItem("useAI") === "true";
+      this.listCollapsed = localStorage.getItem("studentListCollapsed") === "true";
+      this.init();
   },
   watch: {
     useAI(value) {
@@ -117,8 +126,6 @@ createApp({
       });
     },
     async init() {
-      await this.loadGradingMethods();
-
       try {
         const me = await fetch("/api/agent/me");
         if (me.ok) {
@@ -134,26 +141,31 @@ createApp({
 
       this.loadDataset();
     },
-    async loadGradingMethods() {
-      try {
-        const res = await fetch("/api/agent/grading-methods");
-        if (!res.ok) throw new Error("failed to load grading methods");
-        const methods = await res.json();
-        if (Array.isArray(methods) && methods.length) {
-          this.gradingMethods = methods;
-          const defaultMethod = methods.find(item => item.isDefault) || methods[0];
-          this.selectedGradingMethod = defaultMethod.id;
-          return;
-        }
-      } catch (e) {
-        console.warn("load grading methods failed", e);
-      }
+    clearRubric() {
+      this.rubricText = "";
+      this.rubricFileName = "";
+    },
+    async handleRubricFile(event) {
+      const file = event.target.files && event.target.files[0];
+      if (!file) return;
 
-      this.gradingMethods = [
-        { id: "small_fast", kind: "small_fast", label: "Small Fast (2 Small Datasets)", isDefault: true },
-        { id: "rag_ape", kind: "rag_ape", label: "RAG (APE)", isDefault: false }
-      ];
-      this.selectedGradingMethod = "small_fast";
+      this.rubricUploading = true;
+      const formData = new FormData();
+      formData.append("file", file);
+
+      try {
+        const res = await fetch("/api/agent/rubric/extract", { method: "POST", body: formData });
+        const data = await res.json();
+        if (!res.ok || data.ok === false) throw new Error(data.error || "评分细则文件解析失败");
+        this.rubricText = String(data.text || "").trim();
+        this.rubricFileName = String(data.fileName || file.name || "").trim();
+        this.showRubricModal = true;
+      } catch (err) {
+        alert("评分细则上传失败: " + err.message);
+      } finally {
+        this.rubricUploading = false;
+        event.target.value = "";
+      }
     },
     async onDatasetChange() {
       this.levels = [];
@@ -402,8 +414,6 @@ createApp({
       const supervisor = details.supervisor_output && typeof details.supervisor_output === "object" ? details.supervisor_output : {};
       const solver = details.solver_output && typeof details.solver_output === "object" ? details.solver_output : {};
       const analysis = supervisor.analysis && typeof supervisor.analysis === "object" ? supervisor.analysis : {};
-      const rubric = details.rubric && typeof details.rubric === "object" ? details.rubric : {};
-
       const reason = this.pickFirstText(supervisor.reason, result.reason);
       const basis = this.pickFirstText(analysis.basis, analysis.judgement_basis);
       const errorPoint = this.pickFirstText(analysis.error_point, analysis.mistake_point);
@@ -411,10 +421,8 @@ createApp({
       const suggestion = this.pickFirstText(analysis.suggestion);
       const keySteps = this.pickFirstText(solver.key_steps);
       const referenceAnswer = this.pickFirstText(solver.reference_answer);
-      const rubricSummary = this.pickFirstText(rubric.summary);
-      const rubricId = this.pickFirstText(rubric.id);
 
-      if (!reason && !basis && !errorPoint && !correctSolution && !suggestion && !keySteps && !referenceAnswer && !rubricSummary && !rubricId) {
+      if (!reason && !basis && !errorPoint && !correctSolution && !suggestion && !keySteps && !referenceAnswer) {
         return null;
       }
 
@@ -426,9 +434,7 @@ createApp({
         correctSolution,
         suggestion,
         keySteps,
-        referenceAnswer,
-        rubricSummary,
-        rubricId
+        referenceAnswer
       };
     },
     extractProgressView(result) {
@@ -440,6 +446,37 @@ createApp({
         headline: String(summary.headline || "处理摘要"),
         items: this.formatProgressItems(summary.items, false)
       };
+    },
+    normalizeProgressStatus(status, whileJudging = false) {
+      const normalized = String(status || (whileJudging ? "pending" : "done")).trim().toLowerCase();
+      if (normalized === "completed") return "done";
+      if (normalized === "running") return "active";
+      return normalized || (whileJudging ? "pending" : "done");
+    },
+    inferStageProgress(item, whileJudging = false) {
+      const stage = String(item && item.stage || "");
+      const status = this.normalizeProgressStatus(item && item.status, whileJudging);
+      const explicit = Number(item && item.progress);
+      if (Number.isFinite(explicit)) {
+        if (status === "done" || status === "failed") return 100;
+        return Math.max(0, Math.min(100, explicit));
+      }
+      if (status === "done" || status === "failed") return 100;
+      if (status !== "active") return null;
+
+      const stageDefaults = {
+        request_received: 100,
+        mcp_rubric_parse: 10,
+        answer_equivalence: 20,
+        rule_fast_path: 100,
+        grade_solver: 40,
+        grade_solver_skipped: 45,
+        grade_supervisor: 75,
+        recommendation_retrieval: 90,
+        mcp_scoring_analysis: 95,
+        score_mapping: 98
+      };
+      return Object.prototype.hasOwnProperty.call(stageDefaults, stage) ? stageDefaults[stage] : 15;
     },
     formatProgressItems(items, whileJudging = false) {
       if (!Array.isArray(items)) return [];
@@ -454,8 +491,9 @@ createApp({
             stage,
             label: String(item.label || "处理阶段"),
             detail: String(item.detail || ""),
-            status: String(item.status || (whileJudging ? "pending" : "done")),
-            notes: compactStages.has(stage) ? notes.slice(0, 1) : notes.slice(0, 2)
+            status: this.normalizeProgressStatus(item.status, whileJudging),
+            notes: compactStages.has(stage) ? notes.slice(0, 1) : notes.slice(0, 2),
+            progress: this.inferStageProgress(item, whileJudging)
           };
         });
     },
@@ -551,7 +589,6 @@ createApp({
               studentAnswer: this.studentAns,
               maxScore: String(this.maxScore),
               mode: "single",
-              gradingMethod: this.selectedGradingMethod,
               datasetId: this.datasetId === "demo" ? null : this.datasetId,
               level: this.selectedLevel || null,
               questionId: this.currentQ.id,
@@ -560,7 +597,8 @@ createApp({
               enableRecommendation: this.enableRecommendation,
               enableTools: true,
               needScore: this.needScore,
-              scoringMode: "auto"
+              scoringMode: "auto",
+              rubricText: this.rubricText.trim() || null
             })
           });
           const accepted = await res.json();

@@ -4,12 +4,6 @@ Question:
 Question Type:
 {{question_type}}
 
-Equation-like Student Answer:
-{{equation_like_student}}
-
-Equation Validation Evidence:
-{{equation_validation}}
-
 Standard Answer:
 {{truth}}
 
@@ -22,6 +16,12 @@ Independent Reference Answer:
 Independent Reference Steps:
 {{solver_steps}}
 
+Equation-like Student Answer:
+{{equation_like_student}}
+
+Equation Validation Evidence:
+{{equation_validation}}
+
 Need Score:
 {{need_score}}
 
@@ -33,3 +33,17 @@ Max Score:
 
 Rubric:
 {{rubric_text}}
+
+Mandatory Checkpoints:
+1. First decide whether this question requires a final answer or only a setup/process.
+2. If a final answer is required, check whether the student's final answer explicitly matches the Standard Answer.
+3. If the student only provides an equation or setup, do not mark fully correct for a final-answer question.
+4. If Equation Validation Evidence contains expected_matches=false or shows a solved value different from the Standard Answer, correct must be false.
+5. If Equation Validation Evidence shows the setup is valid but unfinished, mark incorrect but allow partial credit if appropriate.
+6. Do not treat a plausible method as a correct final answer.
+
+Before producing JSON, verify:
+- Did the student actually give the final answer?
+- Does the final answer match the Standard Answer?
+- Does Equation Validation Evidence support or contradict the student's setup?
+- Is this a final-answer question or a setup-only question?

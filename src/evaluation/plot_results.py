@@ -2,7 +2,6 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import glob
 import os
-import sys
 
 def plot_latest_eval():
     # Find latest csv

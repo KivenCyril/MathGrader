@@ -2,7 +2,7 @@ package com.mathgrader.model;
 
 import lombok.Data;
 
-import java.util.List;
+import java.util.Map;
 
 @Data
 public class GradeRequest {
@@ -11,9 +11,6 @@ public class GradeRequest {
     private String studentAnswer;
     private String maxScore;
     private String mode; // "single" or "review"
-    private String model; // e.g. "qwen", "deepseek"
-    private String gradingMethod; // e.g. "small_fast", "rag_ape"
-    private List<String> compareMethods; // optional A/B comparison
     private String datasetId; // for retrieval from local dataset
     private String level;
     private String questionId;
@@ -24,4 +21,6 @@ public class GradeRequest {
     private Boolean enableTools;
     private Boolean needScore;
     private String scoringMode;
+    private Map<String, Object> rubricJson;
+    private String rubricText;
 }

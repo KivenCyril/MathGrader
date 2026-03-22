@@ -1,5 +1,4 @@
 from pathlib import Path
-from typing import Dict
 
 class PromptLoader:
     def __init__(self, prompt_dir: str = "src/prompts/versions"):
@@ -8,7 +7,7 @@ class PromptLoader:
     def load(self, version: str, **kwargs) -> str:
         """
         加载指定版本的提示词，并填充变量
-        :param version: 提示词文件名（不含扩展名），如 "v1_basic_grader"
+        :param version: 提示词文件名（不含扩展名），如 "v2_lc_grade_supervisor_system"
         :param kwargs: 模板变量
         :return: 填充后的提示词字符串
         """

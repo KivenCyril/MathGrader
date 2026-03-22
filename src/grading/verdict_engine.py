@@ -1,15 +1,37 @@
-import json
+﻿import json
 import re
 import time
 from typing import Any, Callable, Dict, List, Optional
 
 from src.grading.progress_trace import append_notes, extract_lines, summarize_tool_trace
-
+from src.grading.verdict_helpers import (
+    _build_equation_validation,
+    _build_retrieval_progress_callback,
+    _ensure_progress_summary,
+    _extract_equation_candidate,
+    _finalize_rule_fast_path,
+    _has_equation_validation_evidence,
+    _inject_metadata,
+    _run_retrieval,
+    _select_supervisor_tool_names,
+    _try_rule_fast_path,
+)
 
 ProgressCallback = Optional[Callable[[Dict[str, Any]], None]]
 
 
 class VerdictEngine:
+    _inject_metadata = _inject_metadata
+    _ensure_progress_summary = _ensure_progress_summary
+    _try_rule_fast_path = _try_rule_fast_path
+    _finalize_rule_fast_path = _finalize_rule_fast_path
+    _run_retrieval = _run_retrieval
+    _build_retrieval_progress_callback = _build_retrieval_progress_callback
+    _select_supervisor_tool_names = _select_supervisor_tool_names
+    _extract_equation_candidate = _extract_equation_candidate
+    _has_equation_validation_evidence = _has_equation_validation_evidence
+    _build_equation_validation = _build_equation_validation
+
     def __init__(self, engine: Any):
         self.engine = engine
 
@@ -32,6 +54,8 @@ class VerdictEngine:
         trace_id: Optional[str] = None,
         need_score: bool = True,
         scoring_mode: Optional[str] = None,
+        rubric_override: Optional[Dict[str, Any]] = None,
+        rubric_text: Optional[str] = None,
         progress_callback: ProgressCallback = None,
     ) -> Dict[str, Any]:
         total_started_at = time.perf_counter()
@@ -60,7 +84,11 @@ class VerdictEngine:
         publish("answer_equivalence", "答案快速比对", "正在检查学生答案与标准答案是否可直接判定。", "active")
 
         normalized_question_type = self.engine._normalize_question_type(question_type) or self.engine._classify_question_type(q, t, s)
-        rubric = self.engine.rubric_loader.load(normalized_question_type)
+        rubric = self.engine.rubric_loader.load(
+            normalized_question_type,
+            rubric_override=rubric_override,
+            rubric_text=rubric_text,
+        )
         rubric_text = self.engine.rubric_loader.prompt_text(rubric)
         rubric_notes = self.engine.rubric_loader.notes(rubric)
 
@@ -124,32 +152,23 @@ class VerdictEngine:
             answer_equivalence_stage["notes"],
         )
 
-        if normalized_question_type == "choice":
-            result = self.engine._try_rule_based_choice_grade(t, s, safe_max, trace_id, total_started_at, equivalence_started_at)
-            if result:
-                result["retrieval"]["datasetId"] = dataset_id
-                self._inject_metadata(result, rubric, need_score, scoring_mode)
-                self._ensure_progress_summary(result, "已按选择题规则直接判定。")
-                publish("rule_fast_path", "规则直接判定", "已按选择题规则完成判定。", "done", ["本题命中规则快速路径。"])
-                return result
-
-        if normalized_question_type == "judgment":
-            result = self.engine._try_rule_based_judgment_grade(t, s, safe_max, trace_id, total_started_at, equivalence_started_at)
-            if result:
-                result["retrieval"]["datasetId"] = dataset_id
-                self._inject_metadata(result, rubric, need_score, scoring_mode)
-                self._ensure_progress_summary(result, "已按判断题规则直接判定。")
-                publish("rule_fast_path", "规则直接判定", "已按判断题规则完成判定。", "done", ["本题命中规则快速路径。"])
-                return result
-
-        if normalized_question_type == "arithmetic":
-            result = self.engine._try_rule_based_arithmetic_grade(q, t, s, safe_max, trace_id, total_started_at, equivalence_started_at)
-            if result:
-                result["retrieval"]["datasetId"] = dataset_id
-                self._inject_metadata(result, rubric, need_score, scoring_mode)
-                self._ensure_progress_summary(result, "已按简单计算规则直接判定。")
-                publish("rule_fast_path", "规则直接判定", "已按简单计算规则完成判定。", "done", ["本题命中规则快速路径。"])
-                return result
+        rule_result = self._try_rule_fast_path(
+            normalized_question_type=normalized_question_type,
+            question=q,
+            truth=t,
+            student=s,
+            safe_max=safe_max,
+            trace_id=trace_id,
+            total_started_at=total_started_at,
+            equivalence_started_at=equivalence_started_at,
+            dataset_id=dataset_id,
+            rubric=rubric,
+            need_score=need_score,
+            scoring_mode=scoring_mode,
+            publish=publish,
+        )
+        if rule_result:
+            return rule_result
 
         use_tools = self.engine.default_tools_enabled if enable_tools is None else bool(enable_tools)
         grade_cfg = (self.engine.config.get("langchain", {}) or {}).get("grade", {}) or {}
@@ -197,6 +216,7 @@ class VerdictEngine:
                 tool_names=tool_names,
                 enable_tools=use_tools,
                 temperature=0.1,
+                max_tokens=self.engine.grade_solver_max_tokens,
             )
             solver_json = self.engine._parse_json(solver_res.get("content", ""))
             reference_answer = str(solver_json.get("reference_answer") or "").strip()
@@ -238,7 +258,11 @@ class VerdictEngine:
             scoring_mode=str(scoring_mode or "auto"),
             rubric_text=rubric_text,
         )
-        supervisor_enable_tools = use_tools and (not has_usable_truth or supervisor_tools_when_truth_present or equation_like_student)
+        has_local_equation_evidence = self._has_equation_validation_evidence(equation_validation)
+        equation_tooling_needed = equation_like_student and not has_local_equation_evidence
+        supervisor_enable_tools = use_tools and (
+            not has_usable_truth or supervisor_tools_when_truth_present or equation_tooling_needed
+        )
         publish("grade_supervisor", "生成判卷结论", "正在结合题目、标准答案和学生答案生成判卷结论。", "active")
         supervisor_res = self.engine._invoke_with_tools(
             supervisor_alias,
@@ -246,6 +270,7 @@ class VerdictEngine:
             tool_names=supervisor_tool_names,
             enable_tools=supervisor_enable_tools,
             temperature=0.0,
+            max_tokens=self.engine.grade_supervisor_max_tokens,
         )
         supervisor_json = self.engine._parse_json(supervisor_res.get("content", ""))
         supervisor_perf = supervisor_res.get("perf") or {}
@@ -297,40 +322,19 @@ class VerdictEngine:
         perf_stages.append(supervisor_stage)
         publish("grade_supervisor", "生成判卷结论", f"模型 {supervisor_alias or 'default'} 已生成判卷结论。", "done", supervisor_stage["notes"])
 
-        similar_questions: List[Dict[str, Any]] = []
-        retrieval_meta: Dict[str, Any] = {
-            "enabled": self.engine.recommender.enabled and bool(enable_recommendation),
-            "strategy": "skipped_correct",
-            "datasetId": dataset_id,
-            "matched": 0,
-        }
-        if not correct and bool(enable_recommendation):
-            retrieval_started_at = time.perf_counter()
-            publish("recommendation_retrieval", "检索相似题", "正在检索相似题和巩固推荐。", "active")
-            similar_questions, retrieval_meta = self.engine.recommender.recommend(
-                dataset_id=dataset_id,
-                query_question=q,
-                exclude_question_id=question_id,
-                level=level,
-                top_k=retrieval_top_k,
-                recommendation_count=recommendation_count,
-            )
-            retrieval_stage = {
-                "stage": "recommendation_retrieval",
-                "timing_ms": self.engine._elapsed_ms(retrieval_started_at),
-                "matched": retrieval_meta.get("matched", 0),
-                "vector_enabled": retrieval_meta.get("vectorEnabled", False),
-                "notes": [],
-            }
-            append_notes(
-                retrieval_stage,
-                f"检索到 {retrieval_meta.get('matched', 0)} 条候选相似题。",
-                "已返回错题巩固推荐。" if similar_questions else "未命中足够相似的推荐题。",
-            )
-            perf_stages.append(retrieval_stage)
-            publish("recommendation_retrieval", "检索相似题", f"已完成相似题检索，命中 {retrieval_meta.get('matched', 0)} 条候选。", "done", retrieval_stage["notes"])
-        elif not correct:
-            retrieval_meta["strategy"] = "disabled_by_request"
+        similar_questions, retrieval_meta = self._run_retrieval(
+            correct=correct,
+            enable_recommendation=enable_recommendation,
+            dataset_id=dataset_id,
+            question=q,
+            question_id=question_id,
+            level=level,
+            retrieval_top_k=retrieval_top_k,
+            recommendation_count=recommendation_count,
+            perf_stages=perf_stages,
+            publish=publish,
+            progress_callback=progress_callback,
+        )
 
         return {
             "correct": correct,
@@ -360,54 +364,3 @@ class VerdictEngine:
                 },
             },
         }
-
-    def _inject_metadata(self, result: Dict[str, Any], rubric: Dict[str, Any], need_score: bool, scoring_mode: Optional[str]) -> None:
-        details = result.get("details")
-        if not isinstance(details, dict):
-            details = {}
-            result["details"] = details
-        details["rubric"] = rubric
-        details["scoring_request"] = {
-            "need_score": bool(need_score),
-            "requested_mode": str(scoring_mode or "auto"),
-        }
-
-    def _ensure_progress_summary(self, result: Dict[str, Any], note: str) -> None:
-        details = result.get("details")
-        if not isinstance(details, dict):
-            details = {}
-            result["details"] = details
-        details["progress_summary"] = {
-            "headline": "判卷已完成",
-            "items": [
-                {
-                    "stage": "rule_fast_path",
-                    "label": "规则直接判定",
-                    "detail": "已通过规则引擎直接完成判定。",
-                    "status": "done",
-                    "notes": [note],
-                }
-            ],
-        }
-
-    def _select_supervisor_tool_names(self, *, tool_names: List[str], equation_like_student: bool) -> List[str]:
-        if not equation_like_student:
-            return tool_names
-        preferred = ["verify_equation_setup", "verify_step", "find_counterexample", "eval_expr"]
-        selected = [name for name in preferred if name in tool_names]
-        return selected or tool_names
-
-    def _build_equation_validation(self, *, student: str, truth: str, enabled: bool) -> str:
-        if not enabled:
-            return "not_applicable"
-        handler = self.engine.local_tool_handlers.get("verify_equation_setup")
-        if handler is None:
-            return "unavailable"
-        try:
-            raw = handler(equation=str(student or "").strip(), expected_answer=str(truth or "").strip())
-            parsed = self.engine._parse_json(str(raw or ""))
-            if not isinstance(parsed, dict) or not parsed:
-                return str(raw or "").strip() or "unavailable"
-            return json.dumps(parsed, ensure_ascii=False)
-        except Exception as exc:
-            return json.dumps({"ok": False, "reason": f"equation precheck failed: {exc}"}, ensure_ascii=False)

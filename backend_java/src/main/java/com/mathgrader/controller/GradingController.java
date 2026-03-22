@@ -8,6 +8,7 @@ import com.mathgrader.model.Submission;
 import com.mathgrader.repository.SubmissionRepository;
 import com.mathgrader.service.GradeJobSessionService;
 import com.mathgrader.service.PythonAgentBridgeService;
+import com.mathgrader.service.RubricDocumentService;
 import jakarta.transaction.Transactional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,6 +32,7 @@ public class GradingController {
     private final SubmissionRepository submissionRepository;
     private final QuestionPreprocessService preprocessService;
     private final GradeJobSessionService gradeJobSessionService;
+    private final RubricDocumentService rubricDocumentService;
     private final ObjectMapper objectMapper;
 
     public GradingController(
@@ -38,12 +40,14 @@ public class GradingController {
             SubmissionRepository submissionRepository,
             QuestionPreprocessService preprocessService,
             GradeJobSessionService gradeJobSessionService,
+            RubricDocumentService rubricDocumentService,
             ObjectMapper objectMapper
     ) {
         this.agentBridge = agentBridge;
         this.submissionRepository = submissionRepository;
         this.preprocessService = preprocessService;
         this.gradeJobSessionService = gradeJobSessionService;
+        this.rubricDocumentService = rubricDocumentService;
         this.objectMapper = objectMapper;
     }
 
@@ -76,10 +80,7 @@ public class GradingController {
         submission.setStandardAnswer(request.getStandardAnswer());
         submission.setStudentAnswer(request.getStudentAnswer());
 
-        String modelUsed = request.getModel() != null ? request.getModel() : "default";
-        if (request.getGradingMethod() != null && !request.getGradingMethod().isBlank()) {
-            modelUsed = modelUsed + "|" + request.getGradingMethod();
-        }
+        String modelUsed = "backend_default";
         submission.setModelUsed(modelUsed);
 
         try {
@@ -129,25 +130,39 @@ public class GradingController {
     }
     
     @PostMapping("/ocr")
-    public Map<String, String> ocr(@RequestParam("file") MultipartFile file) {
+    public Map<String, Object> ocr(@RequestParam("file") MultipartFile file) {
         String traceId = newTraceId();
         long startedAt = System.nanoTime();
         log.info("[OCR][{}] request received file={} size={}B", traceId, file.getOriginalFilename(), file.getSize());
-        Map<String, String> response = agentBridge.performOcr(file, traceId);
+        Map<String, Object> response = agentBridge.performOcr(file, traceId);
         log.info("[OCR][{}] completed in {} ms error={}", traceId, elapsedMs(startedAt), response.get("error"));
         return response;
     }
+
+    @PostMapping("/rubric/extract")
+    public Map<String, Object> extractRubric(@RequestParam("file") MultipartFile file) {
+        String traceId = newTraceId();
+        long startedAt = System.nanoTime();
+        log.info("[Rubric][{}] extract request file={} size={}B", traceId, file.getOriginalFilename(), file.getSize());
+        try {
+            String text = rubricDocumentService.extractText(file);
+            log.info("[Rubric][{}] extract completed in {} ms textLength={}", traceId, elapsedMs(startedAt), text.length());
+            return Map.of(
+                    "ok", true,
+                    "traceId", traceId,
+                    "fileName", String.valueOf(file.getOriginalFilename()),
+                    "text", text
+            );
+        } catch (Exception e) {
+            log.warn("[Rubric][{}] extract failed after {} ms: {}", traceId, elapsedMs(startedAt), e.getMessage());
+            return Map.of(
+                    "ok", false,
+                    "traceId", traceId,
+                    "error", "评分细则文件解析失败: " + e.getMessage()
+            );
+        }
+    }
     
-    @GetMapping("/models")
-    public List<String> getModels() {
-        return agentBridge.getAvailableModels();
-    }
-
-    @GetMapping("/grading-methods")
-    public List<Map<String, Object>> getGradingMethods() {
-        return agentBridge.getGradingMethods();
-    }
-
     @PostMapping("/grade")
     public GradeResponse grade(@RequestBody GradeRequest request, Principal principal) {
         String traceId = newTraceId();
@@ -155,17 +170,18 @@ public class GradingController {
         long saveStartedAt = 0L;
         preprocessRequest(request);
         log.info(
-                "[Grade][{}] request received user={} questionId={} datasetId={} type={} model={} tools={} needScore={} enableRecommendation={} scoringMode={}",
+                "[Grade][{}] request received user={} questionId={} datasetId={} type={} tools={} needScore={} enableRecommendation={} scoringMode={} rubricJson={} rubricText={}",
                 traceId,
                 principal != null ? principal.getName() : "anonymous",
                 request.getQuestionId(),
                 request.getDatasetId(),
                 request.getQuestionType(),
-                request.getModel(),
                 request.getEnableTools(),
                 request.getNeedScore(),
                 request.getEnableRecommendation(),
-                request.getScoringMode()
+                request.getScoringMode(),
+                request.getRubricJson() != null,
+                request.getRubricText() != null && !request.getRubricText().isBlank()
         );
 
         GradeResponse response = agentBridge.callPythonAgent(request, traceId);
@@ -196,17 +212,18 @@ public class GradingController {
         String traceId = newTraceId();
         preprocessRequest(request);
         log.info(
-                "[Grade][{}] async request received user={} questionId={} datasetId={} type={} model={} tools={} needScore={} enableRecommendation={} scoringMode={}",
+                "[Grade][{}] async request received user={} questionId={} datasetId={} type={} tools={} needScore={} enableRecommendation={} scoringMode={} rubricJson={} rubricText={}",
                 traceId,
                 principal != null ? principal.getName() : "anonymous",
                 request.getQuestionId(),
                 request.getDatasetId(),
                 request.getQuestionType(),
-                request.getModel(),
                 request.getEnableTools(),
                 request.getNeedScore(),
                 request.getEnableRecommendation(),
-                request.getScoringMode()
+                request.getScoringMode(),
+                request.getRubricJson() != null,
+                request.getRubricText() != null && !request.getRubricText().isBlank()
         );
         Map<String, Object> accepted = agentBridge.submitGradeJob(request, traceId);
         String jobId = String.valueOf(accepted.getOrDefault("jobId", ""));

@@ -7,7 +7,7 @@ models:
   qwen:
     api_key: "${QWEN_API_KEY}"
     base_url: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
-    model_name: "qwen3.5-flash"
+    model_name: "qwen-max"
     embedding_max_batch: 10
 
 roles:
@@ -16,12 +16,24 @@ roles:
 
 ocr:
   paddle:
+    # AI Studio app mode:
+    # token: "${AISTUDIO_APP_TOKEN}"
+    # url: "https://your-app-id.aistudio-app.com/layout-parsing"
+    # OpenAPI mode:
+    access_token: "${BAIDU_OCR_ACCESS_TOKEN}"
     api_key: "${BAIDU_OCR_API_KEY}"
+    secret_key: "${BAIDU_OCR_SECRET_KEY}"
     url: "https://aip.baidubce.com/rest/2.0/ocr/v1/general_basic"
 
 mcp:
   refresh_sec: 90
   servers:
+    - name: "rubric"
+      url: "http://127.0.0.1:3020/mcp"
+      enabled: true
+      name_prefix: "rubric"
+      timeout_sec: 20
+      headers: {}
     - name: "filesystem"
       # Recommended first MCP:
       # https://github.com/cyanheads/filesystem-mcp-server
@@ -56,16 +68,21 @@ langchain:
   grade:
     solver_model: "qwen"       # role: do the question
     supervisor_model: "qwen" # role: supervise verdict
+    solver_max_tokens: 180
+    supervisor_max_tokens: 240
     solver_only_when_truth_missing: true
     supervisor_tools_when_truth_present: false
+    rubric_mcp:
+      enabled: true
+      parse_tool_name: "rubric.parse_text"
+      validate_tool_name: "rubric.validate"
     scoring_analysis:
-      enabled: false
-      # Keep disabled until you provide a business-specific scoring MCP.
-      # The mature filesystem MCP is used as the first external MCP foundation.
-      tool_name: "fs.read_file"
+      enabled: true
+      tool_name: "rubric.score_analysis"
     tools: ["calculate", "ocr_math", "img2latex", "eval_expr", "verify_step", "verify_equation_setup", "find_counterexample", "mcp:*"]
   recommendation:
     enabled: true
+    backend: "weaviate"
     data_root: "data/raw"
     apply_to_datasets: [] # e.g. ["EduChat-Math-main/data/*", "math23k/*", "ape210k-master/data/*"]
     top_k: 5
@@ -76,6 +93,23 @@ langchain:
     model_alias: "qwen"
     embedding_model: "text-embedding-v4"
     max_docs: 60000
+    weaviate:
+      http_host: "127.0.0.1" # use "weaviate" when python-agent runs inside docker-compose
+      http_port: 8088
+      http_secure: false
+      grpc_host: "127.0.0.1" # use "weaviate" when python-agent runs inside docker-compose
+      grpc_port: 50051
+      grpc_secure: false
+      api_key: ""
+      collection_prefix: "MathGraderSim"
+      vector_index: "hnsw" # hnsw | flat
+      question_tokenization: "trigram" # good default for mixed Chinese/math text
+      query_properties: ["question"]
+      import_batch_size: 128
+      embedding_batch_size: 64
+      force_rebuild: false # set true for one clean rebuild, then switch back to false
+      bm25_b: 0.75
+      bm25_k1: 1.2
 
 trace:
   enabled: true

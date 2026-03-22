@@ -48,7 +48,7 @@ class LLMClient:
                 return True
         return False
 
-    def chat_completion(self, messages, temperature=0.7, tools=None, tool_map=None, max_tool_rounds=3):
+    def chat_completion(self, messages, temperature=0.7, tools=None, tool_map=None, max_tool_rounds=3, max_tokens=None):
         started_at = time.perf_counter()
         perf = {
             "timing_ms": 0.0,
@@ -81,6 +81,13 @@ class LLMClient:
                 "messages": current_messages,
                 "temperature": temperature,
             }
+            if max_tokens is not None:
+                try:
+                    safe_max_tokens = int(max_tokens)
+                except Exception:
+                    safe_max_tokens = 0
+                if safe_max_tokens > 0:
+                    payload["max_tokens"] = safe_max_tokens
             
             # Try with JSON mode first if no tools (assuming prompt asks for JSON)
             # But if it fails (e.g. prompt doesn't have "json"), fallback to normal text
@@ -101,7 +108,7 @@ class LLMClient:
                 
                 # If 400 and we used JSON mode, try again without it
                 if resp.status_code == 400 and use_json_mode:
-                    print(f"LLM API 400 Error with JSON mode. Retrying without response_format...")
+                    print("LLM API 400 Error with JSON mode. Retrying without response_format...")
                     del payload["response_format"]
                     resp = requests.post(url, headers=headers, json=payload, timeout=60)
                 perf["llm_round_timings_ms"].append(round((time.perf_counter() - llm_started_at) * 1000.0, 2))

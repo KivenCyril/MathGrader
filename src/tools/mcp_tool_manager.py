@@ -271,7 +271,22 @@ class MCPToolManager:
         self.refresh()
         return list(self._tool_defs.keys())
 
+    def _should_consider_mcp(self, names: Optional[List[str]] = None) -> bool:
+        if not names:
+            return True
+        for name in names:
+            text = str(name or "").strip()
+            if not text:
+                continue
+            if text in {"*", "mcp:*", "all"}:
+                return True
+            if "." in text:
+                return True
+        return False
+
     def get_tools(self, names: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+        if not self._should_consider_mcp(names):
+            return []
         self.refresh()
         if not names:
             return list(self._tool_defs.values())
@@ -282,6 +297,8 @@ class MCPToolManager:
         return [self._tool_defs[n] for n in resolved if n in self._tool_defs]
 
     def get_tool_map(self, names: Optional[List[str]] = None) -> Dict[str, Callable[..., Any]]:
+        if not self._should_consider_mcp(names):
+            return {}
         self.refresh()
         if not names:
             return dict(self._tool_handlers)

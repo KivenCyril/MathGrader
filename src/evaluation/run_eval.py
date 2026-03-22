@@ -142,7 +142,7 @@ def main():
             print(f"Dataset not found: {args.data}")
             return
 
-    print(f"🚀 Starting Evaluation...")
+    print("🚀 Starting Evaluation...")
     print(f"Dataset: {args.data}")
     print(f"Solver: {args.solver} | Grader: {args.grader}")
     
@@ -181,7 +181,7 @@ def main():
     avg_latency = sum(r["latency"] for r in results) / len(results) if results else 0
 
     print("\n" + "="*40)
-    print(f"📊 Evaluation Complete")
+    print("📊 Evaluation Complete")
     print(f"Total: {len(results)}")
     print(f"Correct: {correct_count}")
     print(f"Accuracy: {accuracy:.2f}%")

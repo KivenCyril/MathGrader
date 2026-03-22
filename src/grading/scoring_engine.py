@@ -21,10 +21,13 @@ class ScoringEngine:
         need_score: bool,
         scoring_mode: Optional[str] = None,
     ) -> Dict[str, Any]:
+        details = verdict_result.get("details") if isinstance(verdict_result.get("details"), dict) else {}
+        rubric = details.get("rubric") if isinstance(details.get("rubric"), dict) else {}
         resolved_mode = resolve_scoring_mode(
             question_type=question_type,
             need_score=need_score,
             requested_mode=scoring_mode,
+            rubric_strategy=rubric.get("strategy"),
         )
         correct = bool(verdict_result.get("correct", False))
 
@@ -47,15 +50,13 @@ class ScoringEngine:
             result["notes"] = [str(result.get("summary") or "").strip()]
             return result
 
-        details = verdict_result.get("details") if isinstance(verdict_result.get("details"), dict) else {}
         analysis_meta = details.get("scoring_analysis") if isinstance(details.get("scoring_analysis"), dict) else {}
         analysis_scoring = analysis_meta.get("scoring") if isinstance(analysis_meta.get("scoring"), dict) else {}
         supervisor_output = details.get("supervisor_output") if isinstance(details.get("supervisor_output"), dict) else {}
-        rubric = details.get("rubric") if isinstance(details.get("rubric"), dict) else {}
 
-        scoring_source = analysis_scoring if analysis_meta.get("used") else supervisor_output
+        scoring_source = {"scoring": analysis_scoring} if analysis_meta.get("used") else supervisor_output
         ratio = extract_recommended_ratio(scoring_source, correct=correct)
-        breakdown = extract_breakdown(scoring_source, safe_max)
+        breakdown = self._extract_breakdown(scoring_source, safe_max, rubric)
         if ratio is None:
             ratio = average_credit(breakdown)
         ratio = clamp_ratio(ratio, default=(1.0 if correct else 0.0))
@@ -89,6 +90,60 @@ class ScoringEngine:
             "summary": summary,
             "notes": self._build_notes(summary, breakdown, source_name, analysis_meta),
         }
+
+    def _extract_breakdown(
+        self,
+        scoring_source: Dict[str, Any],
+        safe_max: float,
+        rubric: Dict[str, Any],
+    ) -> list:
+        raw_breakdown = extract_breakdown(scoring_source, safe_max)
+        if not raw_breakdown:
+            return []
+
+        dimensions = rubric.get("dimensions")
+        if not isinstance(dimensions, list) or not dimensions:
+            return raw_breakdown
+
+        dimension_map = {}
+        for item in dimensions:
+            if not isinstance(item, dict):
+                continue
+            keys = {
+                str(item.get("name") or "").strip().lower(),
+                str(item.get("label") or "").strip().lower(),
+            }
+            for key in keys:
+                if key:
+                    dimension_map[key] = item
+
+        normalized = []
+        for row in raw_breakdown:
+            if not isinstance(row, dict):
+                continue
+            matched = dimension_map.get(str(row.get("item") or "").strip().lower()) or dimension_map.get(
+                str(row.get("label") or "").strip().lower()
+            )
+            if matched:
+                try:
+                    full = round_score(safe_max * float(matched.get("weight", 0.0) or 0.0))
+                except Exception:
+                    full = round_score(safe_max)
+                credit = clamp_ratio(row.get("credit"), default=0.0)
+                normalized.append(
+                    {
+                        "item": str(row.get("item") or matched.get("name") or row.get("label") or "").strip(),
+                        "label": str(matched.get("label") or row.get("label") or "").strip(),
+                        "earned": round_score(full * credit),
+                        "full": full,
+                        "credit": credit,
+                        "reason": str(row.get("reason") or matched.get("criteria") or "").strip(),
+                    }
+                )
+                continue
+            normalized.append(row)
+
+        return normalized or raw_breakdown
 
     def _build_notes(
         self,

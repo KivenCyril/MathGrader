@@ -11,6 +11,47 @@ class GradeJobStore:
         self._jobs: Dict[str, Dict[str, Any]] = {}
         self._lock = threading.Lock()
 
+    @staticmethod
+    def _clamp_progress(value: Any) -> Optional[float]:
+        try:
+            return max(0.0, min(100.0, float(value)))
+        except Exception:
+            return None
+
+    @staticmethod
+    def _normalize_status(value: Optional[str]) -> str:
+        text = str(value or "").strip().lower()
+        if text in {"completed", "complete"}:
+            return "done"
+        if text == "running":
+            return "active"
+        return text
+
+    @classmethod
+    def _fallback_progress(cls, stage: str, status: Optional[str], current: Any = None) -> Optional[float]:
+        current_progress = cls._clamp_progress(current)
+        normalized_status = cls._normalize_status(status)
+        if normalized_status in {"done", "failed"}:
+            return 100.0
+        if current_progress is not None:
+            return current_progress
+        if normalized_status != "active":
+            return None
+
+        defaults = {
+            "request_received": 100.0,
+            "mcp_rubric_parse": 10.0,
+            "answer_equivalence": 20.0,
+            "rule_fast_path": 100.0,
+            "grade_solver": 40.0,
+            "grade_solver_skipped": 45.0,
+            "grade_supervisor": 75.0,
+            "recommendation_retrieval": 90.0,
+            "mcp_scoring_analysis": 95.0,
+            "score_mapping": 98.0,
+        }
+        return defaults.get(str(stage or "").strip())
+
     def create(self, trace_id: str) -> Dict[str, Any]:
         self._prune()
         job_id = uuid.uuid4().hex[:16]
@@ -56,6 +97,7 @@ class GradeJobStore:
         detail: Optional[str] = None,
         status: Optional[str] = None,
         notes: Optional[List[str]] = None,
+        progress: Optional[float] = None,
     ) -> None:
         with self._lock:
             job = self._jobs.get(job_id)
@@ -74,6 +116,7 @@ class GradeJobStore:
                     "detail": str(detail or "").strip(),
                     "status": str(status or "pending").strip() or "pending",
                     "notes": [],
+                    "progress": None,
                 }
                 items.append(item)
             if label is not None:
@@ -84,6 +127,14 @@ class GradeJobStore:
                 item["status"] = str(status or "").strip() or item.get("status") or "pending"
             if notes is not None:
                 item["notes"] = [str(note or "").strip() for note in notes if str(note or "").strip()]
+            if progress is not None:
+                normalized_progress = self._clamp_progress(progress)
+                if normalized_progress is not None:
+                    item["progress"] = normalized_progress
+            elif status is not None:
+                fallback_progress = self._fallback_progress(stage, item.get("status"), item.get("progress"))
+                if fallback_progress is not None:
+                    item["progress"] = fallback_progress
             job["updatedAt"] = time.time()
 
     def complete(self, job_id: str, result: Dict[str, Any], headline: Optional[str] = None) -> None:

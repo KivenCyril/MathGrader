@@ -84,19 +84,15 @@
       </div>
     </aside>
 
-    <!-- Center: Solver Panel (Model A) -->
+    <!-- Center: Solver Panel -->
     <section class="flex-1 flex flex-col w-full md:w-auto border-b md:border-b-0 md:border-r border-slate-200 bg-slate-50/50 min-h-[500px] md:min-h-0">
       <div class="p-4 border-b border-slate-200 bg-white flex justify-between items-center sticky top-0 md:static z-10 shadow-sm md:shadow-none">
         <div class="flex flex-col gap-1">
           <h2 class="font-semibold text-slate-700 flex items-center gap-2">
-            <i class="fa-solid fa-user-graduate text-indigo-500"></i> <span class="hidden md:inline">妯″瀷 A</span> (Solver)
+            <i class="fa-solid fa-user-graduate text-indigo-500"></i> <span class="hidden md:inline">求解</span> (Solver)
           </h2>
           <span class="text-xs px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded-full font-mono w-fit">Student</span>
         </div>
-        <select v-model="selectedSolver" class="text-xs border border-slate-300 rounded px-2 py-1 bg-white text-slate-600 outline-none focus:border-indigo-500 max-w-[120px] md:max-w-none">
-          <option value="">Default</option>
-          <option v-for="m in availableModels" :value="m">{{ m }}</option>
-        </select>
       </div>
       
       <div class="flex-1 p-4 md:p-6 overflow-y-auto scroll-custom">
@@ -140,19 +136,15 @@
       </div>
     </section>
 
-    <!-- Right: Grader Panel (Model B) -->
+    <!-- Right: Grader Panel -->
     <section class="flex-1 flex flex-col w-full md:w-auto bg-white min-h-[500px] md:min-h-0">
       <div class="p-4 border-b border-slate-200 flex justify-between items-center sticky top-0 md:static z-10 bg-white shadow-sm md:shadow-none">
         <div class="flex flex-col gap-1">
           <h2 class="font-semibold text-slate-700 flex items-center gap-2">
-            <i class="fa-solid fa-chalkboard-user text-emerald-500"></i> <span class="hidden md:inline">妯″瀷 B</span> (Grader)
+            <i class="fa-solid fa-chalkboard-user text-emerald-500"></i> <span class="hidden md:inline">判卷</span> (Grader)
           </h2>
           <span class="text-xs px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-full font-mono w-fit">Teacher</span>
         </div>
-        <select v-model="selectedGrader" class="text-xs border border-slate-300 rounded px-2 py-1 bg-white text-slate-600 outline-none focus:border-emerald-500 max-w-[120px] md:max-w-none">
-          <option value="">Default</option>
-          <option v-for="m in availableModels" :value="m">{{ m }}</option>
-        </select>
       </div>
 
       <div class="flex-1 p-4 md:p-6 overflow-y-auto scroll-custom">
@@ -224,18 +216,6 @@
       </div>
 
       <div class="p-4 border-t border-slate-200 bg-slate-50 sticky bottom-0 md:static z-10">
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-2 mb-3">
-          <select v-model="selectedGradingMethod" class="text-xs border border-slate-300 rounded px-2 py-2 bg-white text-slate-600 outline-none">
-            <option v-for="m in gradingMethods" :key="m.id" :value="m.id">{{ m.label || m.id }}</option>
-          </select>
-          <select v-model="compareMethod" :disabled="!enableMethodCompare || compareMethodOptions.length===0" class="text-xs border border-slate-300 rounded px-2 py-2 bg-white text-slate-600 outline-none disabled:bg-slate-100">
-            <option v-for="m in compareMethodOptions" :key="m.id" :value="m.id">{{ m.label || m.id }}</option>
-          </select>
-        </div>
-        <label class="text-xs text-slate-500 flex items-center gap-2 mb-3">
-          <input type="checkbox" v-model="enableMethodCompare">
-          Compare with another method
-        </label>
         <label class="text-xs text-slate-500 flex items-center gap-2 mb-3">
           <input type="checkbox" v-model="needScore">
           Need score
@@ -353,13 +333,6 @@
         // Grading Data
         datasets: [],
         questions: [],
-        availableModels: [],
-        gradingMethods: [],
-        selectedSolver: '',
-        selectedGrader: '',
-        selectedGradingMethod: 'small_fast',
-        enableMethodCompare: false,
-        compareMethod: '',
         needScore: true,
         enableRecommendation: false,
         currentIndex: -1,
@@ -383,9 +356,6 @@
       currentQuestion() {
         return this.currentIndex >= 0 ? this.questions[this.currentIndex] : {};
       },
-      compareMethodOptions() {
-        return this.gradingMethods.filter(m => m.id !== this.selectedGradingMethod);
-      }
     },
     watch: {
         currentTab(val) {
@@ -394,39 +364,9 @@
     },
     mounted() {
       this.initDatasets();
-      this.initModels();
-      this.initGradingMethods();
       this.loadQuestions();
     },
     methods: {
-      async initModels() {
-        try {
-          const res = await fetch('/api/agent/models');
-          if (res.ok) this.availableModels = await res.json();
-        } catch (e) {}
-      },
-      async initGradingMethods() {
-        try {
-          const res = await fetch('/api/agent/grading-methods');
-          if (!res.ok) throw new Error('failed');
-          const methods = await res.json();
-          if (Array.isArray(methods) && methods.length) {
-            this.gradingMethods = methods;
-            const defaultMethod = methods.find(m => m.isDefault) || methods[0];
-            this.selectedGradingMethod = defaultMethod.id;
-            const compareFallback = methods.find(m => m.id !== defaultMethod.id);
-            this.compareMethod = compareFallback ? compareFallback.id : '';
-            return;
-          }
-        } catch (e) {}
-
-        this.gradingMethods = [
-          { id: 'small_fast', kind: 'small_fast', label: 'Small Fast (2 Small Datasets)', isDefault: true },
-          { id: 'rag_ape', kind: 'rag_ape', label: 'RAG (APE)', isDefault: false }
-        ];
-        this.selectedGradingMethod = 'small_fast';
-        this.compareMethod = 'rag_ape';
-      },
       async initDatasets() {
         try {
           const res = await fetch('/api/datasets');
@@ -472,8 +412,7 @@
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({ 
-              questionText: this.currentQuestion.text,
-              model: this.selectedSolver
+              questionText: this.currentQuestion.text
             })
           });
           const data = await res.json();
@@ -493,7 +432,6 @@
         if (!this.studentAnswer) return;
         this.isGrading = true;
         try {
-          const compareMethods = this.enableMethodCompare && this.compareMethod ? [this.compareMethod] : [];
           const res = await fetch('/api/agent/grade', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
@@ -503,9 +441,6 @@
               studentAnswer: this.studentAnswer,
               maxScore: this.currentQuestion.maxScore || 1,
               mode: 'review', 
-              model: this.selectedGrader,
-              gradingMethod: this.selectedGradingMethod,
-              compareMethods: compareMethods,
               datasetId: this.currentDatasetId === 'demo' ? null : this.currentDatasetId,
               questionId: this.currentQuestion.id,
               recommendationCount: 3,

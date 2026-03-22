@@ -1,0 +1,89 @@
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: math-grader-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-math_grader}
+      MYSQL_USER: ${MYSQL_USER:-mathgrader}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-mathgrader123}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root123456}
+      TZ: ${TZ:-Asia/Shanghai}
+    ports:
+      - "${MYSQL_PORT:-3306}:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p$$MYSQL_ROOT_PASSWORD || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  weaviate:
+    image: cr.weaviate.io/semitechnologies/weaviate:1.31.2
+    container_name: math-grader-weaviate
+    restart: unless-stopped
+    environment:
+      AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: "true"
+      PERSISTENCE_DATA_PATH: /var/lib/weaviate
+      DEFAULT_VECTORIZER_MODULE: "none"
+      ENABLE_MODULES: ""
+      QUERY_DEFAULTS_LIMIT: 25
+      CLUSTER_HOSTNAME: node1
+    ports:
+      - "${WEAVIATE_HTTP_PORT:-8088}:8080"
+      - "${WEAVIATE_GRPC_PORT:-50051}:50051"
+    volumes:
+      - weaviate_data:/var/lib/weaviate
+
+  python-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile.python
+    container_name: math-grader-agent
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+    depends_on:
+      - weaviate
+    ports:
+      - "${PYTHON_AGENT_PORT:-5000}:5000"
+    volumes:
+      - ./settings.yaml:/app/settings.yaml:ro
+      - ./data:/app/data
+      - ./results:/app/results
+      - ./rubrics:/app/rubrics:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/models', timeout=5)"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+
+  java-backend:
+    build:
+      context: ./backend_java
+      dockerfile: Dockerfile
+    container_name: math-grader-backend
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+      python-agent:
+        condition: service_healthy
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      DB_URL: jdbc:mysql://mysql:3306/${MYSQL_DATABASE:-math_grader}?useSSL=false&serverTimezone=Asia/Shanghai&characterEncoding=UTF-8&allowPublicKeyRetrieval=true
+      DB_USER: ${MYSQL_USER:-mathgrader}
+      DB_PASSWORD: ${MYSQL_PASSWORD:-mathgrader123}
+      PYTHON_AGENT_URL: http://python-agent:5000
+      DATA_ROOT: /app/data/raw
+    ports:
+      - "${JAVA_BACKEND_PORT:-8080}:8080"
+    volumes:
+      - ./data:/app/data:ro
+
+volumes:
+  mysql_data:
+  weaviate_data:
