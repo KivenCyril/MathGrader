@@ -35,6 +35,8 @@ Thumbs.db
 
 # Logs
 *.log
+logs/
+*.pid
 
 # Local secrets
 settings.yaml
