@@ -31,28 +31,8 @@ MathGrader 是一个面向数学题场景的 AI 解题与判卷系统。项目�
 ---
 
 ## 3. 系统架构（Architecture）
-```mermaid
-flowchart LR
-    U[用户 / 前端页面] --> J[Java Backend :8080]
-    J --> P[Python Agent :5000]
 
-    subgraph JAVA[Java Backend]
-      J --> J1[页面与登录]
-      J --> J2[题目预处理与历史记录]
-      J --> J3[同步 / 异步判卷网关]
-    end
-
-    subgraph PY[Python Agent]
-      P --> E[Grading Orchestrator]
-      E --> V[Verdict Layer]
-      E --> S[Scoring Layer]
-      E --> R[Recommendation Layer]
-      E --> T[Local Math Tools / Optional MCP]
-      E --> O[Tracing & Progress]
-    end
-
-    R --> D[(Question Corpus / Index)]
-```
+![MathGrader Architecture](./mathgrader_architecture.png)
 
 ---
 
